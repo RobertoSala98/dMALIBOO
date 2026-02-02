@@ -10,7 +10,8 @@ from Dataset import Dataset
 class BO:
     def __init__(self, objective_function, domain_bounds, gp, af, constraint_functions=None, initial_points=10,
                  random_state=16, logger=None, dataset=None, discrete_values=None, discrete_refine=True,
-                 epsilon_greedy=0.0, epsilon_max_tries=200, epsilon_feas_threshold=0.5):
+                 epsilon_greedy=0.0, epsilon_max_tries=200, epsilon_feas_threshold=0.5,
+                 init_strategy="random", init_params=None):
         
         self.objective_function = objective_function
         self.domain_bounds = np.asarray(domain_bounds)
@@ -27,6 +28,9 @@ class BO:
         self.epsilon_greedy = float(epsilon_greedy)
         self.epsilon_max_tries = int(epsilon_max_tries)
         self.epsilon_feas_threshold = float(epsilon_feas_threshold)
+
+        self.init_strategy = str(init_strategy).lower()
+        self.init_params = {} if init_params is None else dict(init_params)
 
         self.discrete_values = discrete_values
         self.discrete_refine = bool(discrete_refine)
@@ -57,6 +61,7 @@ class BO:
 
         self.X_train = None
         self.y_train = None
+        self.G_train = None  # (n, m) constraint values for X_train in non-dataset mode
 
         self.logger = logger if logger is not None else Logger(dim=self.dim)
 
@@ -109,7 +114,16 @@ class BO:
             best_pos = feas_pos[np.argmin(self.y_train[feas_pos])]
             return float(self.y_train[best_pos]), mask
     
-        mask = self.feasibility_mask(self.X_train)
+        if self.G_train is not None:
+            bounds = self.af.ml_on_bounds_parameters["constraint_bounds"]
+            mask = np.ones(self.X_train.shape[0], dtype=bool)
+            for j in range(self.G_train.shape[1]):
+                lb, ub = bounds[j]
+                v = self.G_train[:, j]
+                mask &= (v >= lb) & (v <= ub)
+        else:
+            mask = self.feasibility_mask(self.X_train)
+
         if not np.any(mask):
             return None, mask
         feas_idx = np.where(mask)[0]
@@ -151,7 +165,12 @@ class BO:
                 return constraint_metrics
 
             for j, constr_fun in enumerate(self.constraint_functions):
-                v = constr_fun(self.X_train).ravel()
+                
+                if self.G_train is not None:
+                    v = self.G_train[:, j].ravel()
+                else:
+                    v = constr_fun(self.X_train).ravel()
+
                 lb, ub = self.af.ml_on_bounds_parameters["constraint_bounds"][j]
 
                 if task == "classification":
@@ -301,10 +320,33 @@ class BO:
         self.global_best_feasible_x = self.dataset.X[best_idx].copy()
         self.global_best_feasible_y = float(y[best_idx])
 
-    def initialize(self, X0=None):
+    def _initial_design_continuous(self, n, strategy):
+        bounds = np.asarray(self.domain_bounds, dtype=float)
+        lo, hi = bounds[:, 0], bounds[:, 1]
+        d = self.dim
+
+        if strategy == "random":
+            return self.sample_uniform(n)
+
+        from scipy.stats import qmc
+
+        seed = int(self.random_state)
+        if strategy == "lhs":
+            sampler = qmc.LatinHypercube(d=d, seed=seed)
+            U = sampler.random(n)
+        elif strategy == "sobol":
+            sampler = qmc.Sobol(d=d, scramble=True, seed=seed)
+            U = sampler.random(n)
+        else:
+            raise ValueError(f"Unknown init_strategy='{strategy}'")
+
+        return qmc.scale(U, lo, hi)
+
+    def initialize(self, X0=None, y0=None, G0=None):
         if self.dataset is not None:
             X_cand = self.dataset.X
             y_cand = self.dataset.y
+
             self.compute_global_best_feasible_from_dataset()
 
             print("Global best feasible y over entire dataset:", self.global_best_feasible_y)
@@ -333,23 +375,40 @@ class BO:
                     )
             return
     
-        if X0 is None:
-            X0 = self.sample_uniform(self.initial_points)
+        if X0 is not None:
+            X0, y0, G0 = self._check_warmstart_shapes(X0, y0=y0, G0=G0)
 
-        if self._has_discrete():
-            X0s = []
-            for i in range(X0.shape[0]):
-                X0s.append(self._snap_to_discrete(X0[i]))
-            X0 = np.vstack(X0s)
+            if self._has_discrete():
+                X0s = [self._snap_to_discrete(X0[i]) for i in range(X0.shape[0])]
+                X0 = np.vstack(X0s)
 
-        y0 = self.objective_function(X0)
+            if y0 is None:
+                y0 = self.objective_function(X0)
 
-        self.X_train = np.asarray(X0)
-        self.y_train = np.asarray(y0).ravel()
+            self.X_train = np.asarray(X0)
+            self.y_train = np.asarray(y0).ravel()
+
+            if self._n_constraints() > 0:
+                if G0 is None:
+                    G0 = self._compute_constraints(self.X_train)
+                self.G_train = np.asarray(G0)
+            else:
+                self.G_train = None
+
+        else:
+            X0 = self._initial_design_continuous(self.initial_points, self.init_strategy)
+
+            if self._has_discrete():
+                X0s = [self._snap_to_discrete(X0[i]) for i in range(X0.shape[0])]
+                X0 = np.vstack(X0s)
+
+            y0 = self.objective_function(X0)
+            self.X_train = np.asarray(X0)
+            self.y_train = np.asarray(y0).ravel()
+            self.G_train = self._compute_constraints(self.X_train)
 
         if self.logger is not None:
             best_feas, mask_all = self.best_feasible_value()
-
             for i in range(self.X_train.shape[0]):
                 self.logger.log(
                     iter=0,
@@ -431,6 +490,13 @@ class BO:
 
             self.X_train = np.vstack([self.X_train, x_next])
             self.y_train = np.append(self.y_train, y_next)
+
+            if self.dataset is None and self._n_constraints() > 0:
+                g_next = np.array([cf(x_next).ravel()[0] for cf in self.constraint_functions], dtype=float).reshape(1, -1)
+                if self.G_train is None:
+                    self.G_train = g_next
+                else:
+                    self.G_train = np.vstack([self.G_train, g_next])
 
             mask_next = self.feasibility_mask(x_next)
             is_feasible = bool(mask_next[0])
@@ -549,6 +615,40 @@ class BO:
         af_vals = self.af(Xcand, gp=self.gp, y_best=y_best).ravel()
         jbest = int(np.argmax(af_vals))
         return Xcand[jbest].reshape(1, -1)
+    
+    def _n_constraints(self):
+        if self.dataset is not None and self.dataset.G is not None:
+            return int(self.dataset.G.shape[1])
+        return int(len(self.constraint_functions))
+
+    def _compute_constraints(self, X):
+        X = np.asarray(X)
+        m = self._n_constraints()
+        if m == 0:
+            return None
+        G = np.column_stack([cf(X).ravel() for cf in self.constraint_functions])
+        return np.asarray(G, dtype=float)
+
+    def _check_warmstart_shapes(self, X0, y0=None, G0=None):
+        X0 = np.asarray(X0, dtype=float)
+        if X0.ndim != 2 or X0.shape[1] != self.dim:
+            raise ValueError(f"X0 must have shape (n,{self.dim}), got {X0.shape}")
+        n0 = X0.shape[0]
+
+        if y0 is not None:
+            y0 = np.asarray(y0, dtype=float).ravel()
+            if y0.shape[0] != n0:
+                raise ValueError(f"y0 must have length {n0}, got {y0.shape[0]}")
+
+        if G0 is not None:
+            G0 = np.asarray(G0, dtype=float)
+            if G0.ndim == 1:
+                G0 = G0.reshape(-1, 1)
+            m = self._n_constraints()
+            if G0.shape != (n0, m):
+                raise ValueError(f"G0 must have shape ({n0},{m}), got {G0.shape}")
+
+        return X0, y0, G0
 
 
 
@@ -603,7 +703,7 @@ def main():
             logger=logger,
             random_state=random_state,
             discrete_values=discrete_values,
-            discrete_refine=True,
+            discrete_refine=True
         )
 
         bo.initialize()
@@ -622,13 +722,13 @@ def main():
 
         bo.logger.to_csv(f"test_{case_name}.csv", bounds_metric, target_metric)
 
+    
     run_case(
         case_name="continuous",
         discrete_values=None,              # or [None, None]
         random_state=16
     )
-
-    # 2) MIXED: x1 continuous, x2 discrete
+    
     run_case(
         case_name="mixed_x2_discrete",
         discrete_values=[
@@ -719,6 +819,7 @@ def main():
     bounds_metric = "mape"   # regression constraint models
     target_metric = ""       # no mlontarget here
     bo.logger.to_csv("ligen_log.csv", bounds_metric, target_metric)
+    
 
 if __name__ == "__main__":
     main()
