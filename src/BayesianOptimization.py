@@ -343,24 +343,151 @@ class BO:
         return qmc.scale(U, lo, hi)
 
     def initialize(self, X0=None, y0=None, G0=None):
+        """
+        Initialization with three modes:
+
+        1) Dataset mode (self.dataset is not None):
+        - If X0 is None: behaves like before (random subset without replacement).
+        - If X0 is provided: X0 must be the PREFIX of what initialize(None) would have selected,
+            so that the extra points are exactly identical to initialize(None). X0 is expected as indices.
+
+        2) Non-dataset mode, warm-start (X0 is not None):
+        - Enforce self.initial_points >= X0.shape[0] (if not, increase it).
+        - Extra points are EXACTLY the tail of initialize(None) for that n_target.
+        - No duplicates (uniqueness enforced after discrete snapping).
+
+        3) Non-dataset mode, no warm-start (X0 is None):
+        - Generates self.initial_points unique points (after discrete snapping).
+        """
+
+        def _key_row(x_row):
+            x_row = np.asarray(x_row, dtype=float).reshape(-1)
+            return x_row.tobytes()
+
+        def _maybe_snap(X):
+            X = np.asarray(X, dtype=float)
+            if not self._has_discrete():
+                return X
+            return np.vstack([self._snap_to_discrete(X[i]) for i in range(X.shape[0])])
+
+        def _generate_full_initial_design(n_total):
+            n_total = int(n_total)
+            if n_total <= 0:
+                return np.zeros((0, self.dim), dtype=float)
+
+            seen = set()
+            X_out = []
+
+            def _draw_candidates(n_draw):
+                n_draw = int(n_draw)
+                if n_draw <= 0:
+                    return np.zeros((0, self.dim), dtype=float)
+
+                if self.init_strategy == "random":
+                    return self.sample_uniform(n_draw)
+
+                from scipy.stats import qmc
+                bounds = np.asarray(self.domain_bounds, dtype=float)
+                lo, hi = bounds[:, 0], bounds[:, 1]
+                d = self.dim
+                seed = int(self.random_state)
+
+                if self.init_strategy == "lhs":
+                    if not hasattr(_draw_candidates, "_sampler"):
+                        _draw_candidates._sampler = qmc.LatinHypercube(d=d, seed=seed)
+                    U = _draw_candidates._sampler.random(n_draw)
+
+                elif self.init_strategy == "sobol":
+                    if not hasattr(_draw_candidates, "_sampler"):
+                        _draw_candidates._sampler = qmc.Sobol(d=d, scramble=True, seed=seed)
+                    U = _draw_candidates._sampler.random(n_draw)
+
+                else:
+                    raise ValueError(f"Unknown init_strategy='{self.init_strategy}'")
+
+                return qmc.scale(U, lo, hi)
+
+            while len(X_out) < n_total:
+                remaining = n_total - len(X_out)
+                n_draw = max(remaining, 16)
+                Xcand = _draw_candidates(n_draw)
+                Xcand = _maybe_snap(Xcand)
+
+                for i in range(Xcand.shape[0]):
+                    k = _key_row(Xcand[i])
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    X_out.append(Xcand[i].copy())
+                    if len(X_out) >= n_total:
+                        break
+
+            return np.asarray(X_out, dtype=float)
+
         if self.dataset is not None:
             X_cand = self.dataset.X
             y_cand = self.dataset.y
+            N = int(X_cand.shape[0])
 
             self.compute_global_best_feasible_from_dataset()
-
             print("Global best feasible y over entire dataset:", self.global_best_feasible_y)
             print("Global best feasible x over entire dataset:", self.global_best_feasible_x)
-            #print("Global best feasible row index:", self.global_best_feasible_idx)
 
-            n0 = min(self.initial_points, X_cand.shape[0])
-            idx0 = self.rng.choice(X_cand.shape[0], size=n0, replace=False)
+            if X0 is not None:
+                idx_user = np.asarray(X0)
+
+                if idx_user.ndim == 1:
+                    idx_user = idx_user.astype(int).ravel()
+                elif idx_user.ndim == 2:
+                    X_user = np.asarray(idx_user, dtype=float)
+                    if X_user.shape[1] != self.dim:
+                        raise ValueError(f"In dataset mode, X0 must be indices (1D) or points with shape (n,{self.dim}).")
+
+                    map_ds = {}
+                    for i in range(N):
+                        map_ds[_key_row(X_cand[i])] = i
+
+                    idx_list = []
+                    for i in range(X_user.shape[0]):
+                        k = _key_row(X_user[i])
+                        if k not in map_ds:
+                            raise ValueError(
+                                "Could not match X0 rows exactly to dataset.X. "
+                                "Please pass indices (1D integer array) in dataset mode."
+                            )
+                        idx_list.append(map_ds[k])
+                    idx_user = np.asarray(idx_list, dtype=int)
+                else:
+                    raise ValueError("In dataset mode, X0 must be indices (1D) or points (2D).")
+
+                if np.unique(idx_user).size != idx_user.size:
+                    raise ValueError("Duplicate indices in X0 (dataset mode).")
+
+                n_user = int(idx_user.size)
+                if self.initial_points < n_user:
+                    self.initial_points = n_user
+                n_target = int(min(self.initial_points, N))
+
+                idx_full = self.rng.choice(N, size=n_target, replace=False)
+
+                if not np.array_equal(idx_full[:n_user], idx_user):
+                    raise ValueError(
+                        "To get extra points exactly identical to initialize(None), "
+                        "X0 (indices) must be the prefix of the indices that initialize(None) would pick "
+                        "with the same random_state and initial_points."
+                    )
+
+                idx0 = idx_full
+            else:
+                n0 = min(int(self.initial_points), N)
+                idx0 = self.rng.choice(N, size=n0, replace=False)
 
             self.used_idx[idx0] = True
             self.train_idx = np.asarray(idx0, dtype=int)
+            self.X_train = np.asarray(X_cand[idx0], dtype=float)
+            self.y_train = np.asarray(y_cand[idx0], dtype=float).ravel()
 
-            self.X_train = np.asarray(X_cand[idx0])
-            self.y_train = np.asarray(y_cand[idx0]).ravel()
+            self.G_train = None
 
             if self.logger is not None:
                 mask_all = self.feasibility_mask_idx(idx0)
@@ -374,38 +501,80 @@ class BO:
                         y_best_feasible=best_feas,
                     )
             return
-    
+
         if X0 is not None:
             X0, y0, G0 = self._check_warmstart_shapes(X0, y0=y0, G0=G0)
+            n_user = int(X0.shape[0])
 
-            if self._has_discrete():
-                X0s = [self._snap_to_discrete(X0[i]) for i in range(X0.shape[0])]
-                X0 = np.vstack(X0s)
+            if self.initial_points < n_user:
+                self.initial_points = n_user
+            n_target = int(self.initial_points)
+
+            X_full = _generate_full_initial_design(n_target)
+
+            X0_snapped = _maybe_snap(X0)
+            if (y0 is not None or G0 is not None) and (not np.all(X0_snapped == X0)):
+                raise ValueError(
+                    "X0 is not on the discrete grid but y0/G0 were provided. "
+                    "Provide X0 already snapped, or pass y0=None and G0=None."
+                )
+            X0 = X0_snapped
+
+            if np.unique([_key_row(X0[i]) for i in range(n_user)]).size != n_user:
+                raise ValueError("Duplicate points in user-provided X0.")
+            
+            if not np.all(X_full[:n_user] == X0):
+                raise ValueError(
+                    "To get extra points exactly identical to initialize(None), "
+                    "X0 must be exactly the first X0.shape[0] points produced by initialize(None) "
+                    "(same random_state, init_strategy, discrete_values, and initial_points logic)."
+                )
+
+            X_extra = X_full[n_user:, :]
+            self.X_train = X_full
 
             if y0 is None:
-                y0 = self.objective_function(X0)
+                y_all = self.objective_function(self.X_train)
+                self.y_train = np.asarray(y_all, dtype=float).ravel()
+            else:
+                y0 = np.asarray(y0, dtype=float).ravel()
+                y_extra = np.asarray(self.objective_function(X_extra), dtype=float).ravel() if X_extra.shape[0] > 0 else np.array([], dtype=float)
+                self.y_train = np.concatenate([y0, y_extra])
 
-            self.X_train = np.asarray(X0)
-            self.y_train = np.asarray(y0).ravel()
-
-            if self._n_constraints() > 0:
+            m = self._n_constraints()
+            if m > 0:
                 if G0 is None:
-                    G0 = self._compute_constraints(self.X_train)
-                self.G_train = np.asarray(G0)
+                    G_all = self._compute_constraints(self.X_train)
+                    self.G_train = np.asarray(G_all, dtype=float)
+                else:
+                    G0 = np.asarray(G0, dtype=float)
+                    if X_extra.shape[0] > 0:
+                        G_extra = np.asarray(self._compute_constraints(X_extra), dtype=float)
+                        self.G_train = np.vstack([G0, G_extra])
+                    else:
+                        self.G_train = np.asarray(G0, dtype=float)
             else:
                 self.G_train = None
 
-        else:
-            X0 = self._initial_design_continuous(self.initial_points, self.init_strategy)
+            if self.logger is not None:
+                best_feas, mask_all = self.best_feasible_value()
+                for i in range(self.X_train.shape[0]):
+                    self.logger.log(
+                        iter=0,
+                        x_next=self.X_train[i],
+                        y_next=self.y_train[i],
+                        feasible=bool(mask_all[i]),
+                        y_best_feasible=best_feas,
+                    )
+            return
 
-            if self._has_discrete():
-                X0s = [self._snap_to_discrete(X0[i]) for i in range(X0.shape[0])]
-                X0 = np.vstack(X0s)
+        X_full = _generate_full_initial_design(int(self.initial_points))
+        self.X_train = np.asarray(X_full, dtype=float)
 
-            y0 = self.objective_function(X0)
-            self.X_train = np.asarray(X0)
-            self.y_train = np.asarray(y0).ravel()
-            self.G_train = self._compute_constraints(self.X_train)
+        y0 = self.objective_function(self.X_train)
+        self.y_train = np.asarray(y0, dtype=float).ravel()
+
+        self.G_train = self._compute_constraints(self.X_train)
 
         if self.logger is not None:
             best_feas, mask_all = self.best_feasible_value()
