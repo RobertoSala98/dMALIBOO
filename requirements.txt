@@ -3,3 +3,4 @@ scikit_learn
 xgboost
 pandas
 scipy
+matplotlib

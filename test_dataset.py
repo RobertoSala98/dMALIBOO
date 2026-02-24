@@ -10,26 +10,20 @@ from BayesianOptimization import BO
 from Logger import Logger
 
 def main():
-    random_state = 16
-    filename = "resources/ligen.csv"
+    random_state = 2
+    filename = "resources/grid_search_summary.csv"
 
     x_cols = [
-        "ALIGN_SPLIT",
-        "OPTIMIZE_SPLIT",
-        "OPTIMIZE_REPS",
-        "CUDA_THREADS",
-        "N_RESTART",
-        "CLIPPING",
-        "SIM_THRESH",
-        "BUFFER_SIZE"
+        "box_threshold",
+        "text_threshold"
     ]
 
     ds = Dataset.from_file(
         filename,
         x_cols=x_cols,
-        y_col="RMSD^3*TIME",
-        g_cols=["RMSD_0.75"],
-        t_col="TIME_TOTAL",
+        y_col="avg_time_per_sample",
+        g_cols=["mAP", "energy_kwh"],
+        #t_col="total_time_s",
     )
 
     bounds = np.column_stack([ds.X.min(axis=0), ds.X.max(axis=0)])
@@ -45,7 +39,8 @@ def main():
             "name": "ridge",
             "task": "regression",
             "constraint_bounds": [
-                (0.0, 2.1)
+                (0.2, 1.0),
+                (0.0, 0.15)
             ],
         },
 
@@ -72,14 +67,14 @@ def main():
         gp=gp,
         af=af,
         constraint_functions=None,
-        initial_points=12,
+        initial_points=5,
         random_state=random_state,
         logger=logger,
         dataset=ds,
     )
 
     bo.initialize()
-    x_best, y_best = bo.run(n_iterations=60, n_restarts=5, verbose=True)
+    x_best, y_best = bo.run(n_iterations=15, verbose=True)
 
     print("\nBest feasible row found:")
     print("x_best =", x_best)
@@ -87,7 +82,7 @@ def main():
 
     bounds_metric = "mape"
     target_metric = "accuracy"
-    bo.logger.to_csv("test_dataset_log.csv", bounds_metric, target_metric)
+    bo.logger.to_csv("gridsearch_results.csv", bounds_metric, target_metric)
     
 
 

@@ -476,8 +476,8 @@ class BO:
                         "X0 (indices) must be the prefix of the indices that initialize(None) would pick "
                         "with the same random_state and initial_points."
                     )
-
-                idx0 = idx_full
+                else:
+                    idx0 = idx_full
             else:
                 n0 = min(int(self.initial_points), N)
                 idx0 = self.rng.choice(N, size=n0, replace=False)
@@ -486,15 +486,14 @@ class BO:
             self.train_idx = np.asarray(idx0, dtype=int)
             self.X_train = np.asarray(X_cand[idx0], dtype=float)
             self.y_train = np.asarray(y_cand[idx0], dtype=float).ravel()
-
-            self.G_train = None
+            self.G_train = np.asarray(self.dataset.G[idx0], dtype=float)
 
             if self.logger is not None:
                 mask_all = self.feasibility_mask_idx(idx0)
                 best_feas, _ = self.best_feasible_value()
                 for i in range(self.X_train.shape[0]):
                     self.logger.log(
-                        iter=i,
+                        iter=0,
                         x_next=self.X_train[i],
                         y_next=self.y_train[i],
                         feasible=bool(mask_all[i]),
@@ -625,6 +624,7 @@ class BO:
 
             self.X_train = np.vstack([self.X_train, x_next])
             self.y_train = np.append(self.y_train, y_next)
+            self.G_train = np.vstack([self.G_train, self.dataset.G[idx_next]])
 
             is_feasible = bool(self.feasibility_mask_idx([idx_next])[0])
 
@@ -705,6 +705,8 @@ class BO:
             best_idx = feas_idx[np.argmin(self.y_train[feas_idx])]
         else:
             best_idx = None
+
+        self.best_idx = best_idx
 
         return self.X_train[best_idx], self.y_train[best_idx]
     
@@ -979,7 +981,20 @@ def main():
         dataset=ds,
     )
 
-    bo.initialize()  # samples initial points from ds.X / ds.y
+    X_init = np.array([
+        [ 8,  8, 1, 128, 1024, 256, 1, 20],
+        [32, 12, 2, 192,  256,  10, 4, 10],
+        [72, 12, 1, 256,  256,  30, 4, 50],
+        [72, 48, 3, 224,  256,  30, 2,  2],
+        [20, 48, 1,  64,  256,  10, 1, 20],
+        [16, 32, 2, 128, 1024,  10, 3,  1],
+        [12,  8, 2, 160,  256,  30, 4,  2],
+        [16, 24, 1, 128, 1024, 256, 1, 20],
+        [32, 20, 1, 224,  256,  50, 1,  2],
+        [20, 72, 3, 256, 1024,  30, 3, 20],
+    ], dtype=float)
+
+    bo.initialize(X0=X_init)    # samples initial points from ds.X / ds.y
 
     x_best, y_best = bo.run(n_iterations=60, n_restarts=5, verbose=True)
     print("Best feasible x =", x_best, " y =", y_best)
