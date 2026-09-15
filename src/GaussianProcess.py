@@ -9,16 +9,23 @@ class GP:
         self.random_state = random_state
         self.gpmodel = None
 
-    def __call__(self):
+    def __call__(self, optimize_hyperparameters=True):
         kernel = self._get_kernel()
-        self.gpmodel = GaussianProcessRegressor(
+
+        return GaussianProcessRegressor(
             kernel=kernel,
             alpha=1e-6,
             normalize_y=True,
-            n_restarts_optimizer=5,
+            optimizer=(
+                "fmin_l_bfgs_b"
+                if optimize_hyperparameters
+                else None
+            ),
+            n_restarts_optimizer=(
+                5 if optimize_hyperparameters else 0
+            ),
             random_state=self.random_state,
         )
-        return self.gpmodel
 
     def _get_kernel(self):
         if self.kernel_name == 'RBF':
@@ -27,6 +34,43 @@ class GP:
             return Matern(**self.kernel_kwargs)
         else:
             raise ValueError(f"Unknown kernel: {self.kernel_name}")
+
+    def clone_GP(
+        self,
+        length_scale=None,
+        nu=None,
+        optimize_hyperparameters=True,
+    ):
+        kwargs = dict(self.kernel_kwargs)
+
+        if self.kernel_name == "RBF":
+            if nu is not None:
+                raise ValueError(
+                    "nu is not valid for an RBF kernel."
+                )
+
+            if length_scale is not None:
+                kwargs["length_scale"] = float(length_scale)
+
+        elif self.kernel_name == "Matern":
+            if length_scale is not None:
+                kwargs["length_scale"] = float(length_scale)
+
+            if nu is not None:
+                kwargs["nu"] = float(nu)
+
+        else:
+            raise ValueError(
+                f"Unknown kernel: {self.kernel_name}"
+            )
+
+        return GP(
+            kernel_name=self.kernel_name,
+            random_state=self.random_state,
+            **kwargs,
+        )(
+            optimize_hyperparameters=optimize_hyperparameters
+        )
     
 def main():
 

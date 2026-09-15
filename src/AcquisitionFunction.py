@@ -7,8 +7,11 @@ from sklearn.exceptions import ConvergenceWarning
 from GaussianProcess import *
 from MachineLearning import *
 
+import copy
+
 class AF:
-    def __init__(self, kind="ei", ml_on_bounds=False, ml_on_target=False, random_state=None, **af_kwards):
+    def __init__(self, kind="ei", ml_on_bounds=False, ml_on_target=False,
+                 random_state=None, skip_ml_build=False, **af_kwards):
         self.kind = kind
 
         if self.kind not in ["ei", "lcb"]:
@@ -17,28 +20,32 @@ class AF:
         self.af_kwards = af_kwards
         self.ml_on_bounds = ml_on_bounds
         self.ml_on_target = ml_on_target
+        self.random_state = random_state
         self.rng = np.random.default_rng(random_state)
 
         if self.ml_on_bounds:
             if "ml_on_bounds_parameters" in self.af_kwards:
                 self.ml_on_bounds_parameters = self.af_kwards["ml_on_bounds_parameters"]
-                other_params = {k: v for k, v in self.ml_on_bounds_parameters.items() if k not in ["name", "task", "constraint_bounds"]}
-                other_params.setdefault("random_state", random_state)
 
-                self.ml_bounds = []
-                for constraint in range(len(self.ml_on_bounds_parameters["constraint_bounds"])):
-                    self.ml_bounds.append(ML(self.ml_on_bounds_parameters["name"], self.ml_on_bounds_parameters["task"], **other_params))
+                if not skip_ml_build:
+                    other_params = {k: v for k, v in self.ml_on_bounds_parameters.items() if k not in ["name", "task", "constraint_bounds"]}
+                    other_params.setdefault("random_state", random_state)
+
+                    self.ml_bounds = []
+                    for constraint in range(len(self.ml_on_bounds_parameters["constraint_bounds"])):
+                        self.ml_bounds.append(ML(self.ml_on_bounds_parameters["name"], self.ml_on_bounds_parameters["task"], **other_params))
             else:
                 raise ValueError("You must provide ml_on_bounds_parameters")
-            
+
         if self.ml_on_target:
             if "ml_on_target_parameters" in self.af_kwards:
                 self.ml_on_target_parameters = self.af_kwards["ml_on_target_parameters"]
 
-                other_params = {k: v for k, v in self.ml_on_target_parameters.items() if k not in ["name", "task"]}
-                other_params.setdefault("random_state", random_state)
+                if not skip_ml_build:
+                    other_params = {k: v for k, v in self.ml_on_target_parameters.items() if k not in ["name", "task"]}
+                    other_params.setdefault("random_state", random_state)
 
-                self.ml_target = ML(self.ml_on_target_parameters["name"], self.ml_on_target_parameters["task"], **other_params)
+                    self.ml_target = ML(self.ml_on_target_parameters["name"], self.ml_on_target_parameters["task"], **other_params)
             else:
                 raise ValueError("You must provide ml_on_target_parameters")
         
@@ -52,18 +59,28 @@ class AF:
             if (self.ml_on_bounds and self.ml_on_bounds_parameters["task"] == "classification") or (self.ml_on_target and self.ml_on_target_parameters["task"] == "classification"):
                 self.normalize_AF = True
 
+    def _base_acquisition(self, mu, sigma, y_best=None):
+            sigma = np.maximum(sigma, 1e-9)
+    
+            if self.kind == "ei":
+                if y_best is None:
+                    raise ValueError(
+                        "y_best is required for EI."
+                    )
+                return self._ei(mu, sigma, y_best)
+    
+            if self.kind == "lcb":
+                kappa = self.af_kwards.get("kappa", 1.0)
+                return self._lcb(mu, sigma, kappa)
+
+            raise ValueError(f"Unsupported AF: {self.kind}")
+
     def __call__(self, X, gp, y_best=None):
         
         mu, sigma = gp.predict(X, return_std=True)
         sigma = np.maximum(sigma, 1e-9)
 
-        if self.kind == "ei":
-            if y_best is None:
-                raise ValueError("y_best must be provided for EI")
-            af_value = self._ei(mu, sigma, y_best)
-        else:
-            kappa = self.af_kwards.get("kappa", 1.0)
-            af_value = self._lcb(mu, sigma, kappa)
+        af_value = self._base_acquisition(mu, sigma, y_best=y_best)
 
         if self.normalize_AF:
             af_value = np.maximum((af_value - self.min_AF) / (self.max_AF - self.min_AF), 0.0)
@@ -121,7 +138,7 @@ class AF:
             
             self.min_AF = np.inf
             self.max_AF = -np.inf
-            for _ in range(10):
+            for _ in range(30):
                 x0 = self.rng.uniform(self.bounds[:, 0], self.bounds[:, 1])
                 
                 trial_min_AF = minimize(est_min_AF, x0=x0, bounds=self.bounds, method="L-BFGS-B").fun
@@ -157,25 +174,52 @@ class AF:
 
         return best_x
     
-    def maximise_over_dataset(self, gp, X_cand, y_best=None, batch=1, return_index=False):
+    def maximise_over_dataset(self, gp, X_cand, y_best=None, return_index=False, tie_tol=0.0, used_idx=None):
         X_cand = np.asarray(X_cand)
 
         if self.normalize_AF:
             mu, sigma = gp.predict(X_cand, return_std=True)
-
-            base = self._lcb(mu, sigma, self.af_kwards.get("kappa", 1.0))
+            base = self._base_acquisition(mu, sigma, y_best=y_best)
 
             self.min_AF = float(np.min(base))
             self.max_AF = float(np.max(base))
 
         vals = self(X_cand, gp=gp, y_best=y_best).ravel()
 
-        if batch == 1:
-            j = int(np.argmax(vals))
-            return j if return_index else X_cand[j]
+        max_val = np.max(vals)
+        tied_idx = np.flatnonzero(np.isclose(vals, max_val, rtol=0.0, atol=tie_tol))
 
-        idx = np.argsort(vals)[-batch:][::-1]
-        return idx if return_index else X_cand[idx]
+        if used_idx is not None:
+            tied_idx_ = np.setdiff1d(tied_idx, used_idx, assume_unique=True)
+            if tied_idx_.size > 0:
+                tied_idx = tied_idx_.copy()
+
+        j = int(self.rng.choice(tied_idx))
+
+        return j if return_index else X_cand[j]
+
+    def clone_AF(self, kappa=None):
+        kwargs = copy.deepcopy(self.af_kwards)
+
+        if kappa is not None:
+            kwargs["kappa"] = float(kappa)
+
+        af_clone = AF(
+            kind=self.kind,
+            ml_on_bounds=self.ml_on_bounds,
+            ml_on_target=self.ml_on_target,
+            random_state=self.random_state,
+            skip_ml_build=True,
+            **kwargs,
+        )
+
+        if self.ml_on_bounds:
+            af_clone.ml_bounds = copy.deepcopy(self.ml_bounds)
+
+        if self.ml_on_target:
+            af_clone.ml_target = copy.deepcopy(self.ml_target)
+
+        return af_clone
 
 def main():
     def objective(X):

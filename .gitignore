@@ -1,3 +1,5 @@
 *_log.csv
 .DS_Store
 resources
+*/__pycache__/**
+*.png

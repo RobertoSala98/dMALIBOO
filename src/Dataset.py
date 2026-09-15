@@ -173,8 +173,8 @@ class Dataset:
             raise ValueError("x_cols, y_col, and g_cols must be disjoint.")
 
         # Allow time to alias y or any g (requested behavior)
-        if self.t_idx is not None and (not self.allow_time_in_x) and (self.t_idx in self.x_idx):
-            raise ValueError("t_col overlaps with x_cols; set allow_time_in_x=True to allow this.")
+        #if self.t_idx is not None and (not self.allow_time_in_x) and (self.t_idx in self.x_idx):
+        #    raise ValueError("t_col overlaps with x_cols; set allow_time_in_x=True to allow this.")
 
 
     @property
@@ -206,23 +206,103 @@ class Dataset:
     def dim(self):
         return int(len(self.x_idx))
 
-def main():
-    filename = "resources/oscarp.csv"
+    def min_with_constraints(self, constraints=None, return_index=False):
+        """
+        Compute minimum y among rows satisfying column constraints.
 
-    x_cols = [
-        "parallelism_ffmpeg-0",
-        "parallelism_librosa",
-        "parallelism_ffmpeg-1",
-        "parallelism_ffmpeg-2",
-        "parallelism_deepspeech",
-    ]
+        Parameters
+        ----------
+        constraints : dict or None
+            Mapping: column_spec -> condition
+
+            column_spec : int or str
+                Column index or column name.
+
+            condition :
+                - scalar value      -> equality (col == value)
+                - tuple (op, val)   -> comparison
+                    op in {"<", "<=", ">", ">=", "==", "!="}
+                - callable          -> function applied to column vector
+                                        must return boolean mask
+
+            Example:
+                {
+                    "time": ("<=", 10.0),
+                    "machine": 2,
+                    "cost": (">", 0)
+                }
+
+        return_index : bool
+            If True, also return row index of the minimum.
+
+        Returns
+        -------
+        y_min : float or None
+            Minimum objective among feasible rows.
+            None if no feasible row exists.
+
+        idx : int (optional)
+            Index of the row achieving minimum.
+        """
+        if constraints is None:
+            constraints = {}
+
+        mask = np.ones(self.n, dtype=bool)
+
+        for col, cond in constraints.items():
+            col_idx = self._col_to_index(col)
+            column = self.data[:, col_idx]
+
+            if callable(cond):
+                mask &= cond(column)
+
+            elif isinstance(cond, tuple):
+                op, val = cond
+                if op == "<":
+                    mask &= column < val
+                elif op == "<=":
+                    mask &= column <= val
+                elif op == ">":
+                    mask &= column > val
+                elif op == ">=":
+                    mask &= column >= val
+                elif op == "==":
+                    mask &= column == val
+                elif op == "!=":
+                    mask &= column != val
+                else:
+                    raise ValueError(f"Unsupported operator: {op}")
+
+            else:
+                # equality
+                mask &= column == cond
+
+        feasible_idx = np.where(mask)[0]
+
+        if feasible_idx.size == 0:
+            return (None, None) if return_index else None
+
+        y_vals = self.y[feasible_idx]
+        best_local = np.argmin(y_vals)
+        best_idx = feasible_idx[best_local]
+        y_min = float(y_vals[best_local])
+
+        if return_index:
+            return y_min, int(best_idx)
+
+        return y_min
+
+def main():
+    filename = "resources/muDock.csv"
+
+    x_cols = ["generations", "mutation", "population", "tournament"]
 
     ds = Dataset.from_file(
         filename,
         x_cols=x_cols,
-        y_col="cost",
-        g_cols=["total_time"],
-        t_col="total_time",
+        y_col="median_energy",
+        g_cols=["execution_time"],
+        t_col="execution_time",
     )
 
     print("Loaded file:", ds.path)
@@ -233,19 +313,18 @@ def main():
     print("\nFirst row:")
     print("X[0] =", ds.X[0].tolist())
     print("y[0] =", float(ds.y[0]))
-    print("t[0] =", None if ds.t is None else float(ds.t[0]))
+    #print("t[0] =", None if ds.t is None else float(ds.t[0]))
 
     print("\nShapes:")
     print("X shape:", ds.X.shape)
     print("y shape:", ds.y.shape)
     print("G shape:", None if ds.G is None else ds.G.shape)
-    print("t shape:", None if ds.t is None else ds.t.shape)
+    #print("t shape:", None if ds.t is None else ds.t.shape)
 
-    # Consistency check: since g_cols == ["total_time"] and t_col == "total_time",
-    # ds.t should match ds.G[:,0]
-    if ds.G is not None and ds.t is not None:
-        max_abs_diff = abs(ds.G[:, 0] - ds.t).max()
-        print("\nCheck t == G[:,0]: max_abs_diff =", float(max_abs_diff))
+    y_min = ds.min_with_constraints({
+        "execution_time": ("<=", 100)
+    })
+    print("Minimum cost with execution_time <= 0.1:", y_min)
 
 
 if __name__ == "__main__":
