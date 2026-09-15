@@ -3,3 +3,4 @@
 resources
 */__pycache__/**
 *.png
+test_*
