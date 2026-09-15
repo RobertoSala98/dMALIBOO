@@ -3,6 +3,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 import warnings
 from sklearn.exceptions import ConvergenceWarning
+import sys
 
 from GaussianProcess import *
 from MachineLearning import *
@@ -48,68 +49,77 @@ class AF:
                     self.ml_target = ML(self.ml_on_target_parameters["name"], self.ml_on_target_parameters["task"], **other_params)
             else:
                 raise ValueError("You must provide ml_on_target_parameters")
-        
-        self.normalize_AF = False
-        if self.kind == "lcb":
-            if "bounds" in self.af_kwards:
-                self.bounds = af_kwards["bounds"]
-            else:
-                raise ValueError("You need to provide bounds to the lcb AF")
-            
-            if (self.ml_on_bounds and self.ml_on_bounds_parameters["task"] == "classification") or (self.ml_on_target and self.ml_on_target_parameters["task"] == "classification"):
-                self.normalize_AF = True
+
+        # Only "lcb" can go negative. A negative raw value multiplied by a
+        # feasibility probability in [0, 1] is not monotonic (it can make a
+        # bad point look better), so we only need to floor it at >= 0 when a
+        # *soft* (probability) mask is actually going to multiply against it.
+        self.shift_AF = (
+            self.kind == "lcb"
+            and (
+                (self.ml_on_bounds and self.ml_on_bounds_parameters["task"] == "classification")
+                or (self.ml_on_target and self.ml_on_target_parameters["task"] == "classification")
+            )
+        )
+
+        # Safe default so a raw __call__ before any maximise*/maximise_over_dataset
+        # call doesn't crash with AttributeError; it will be overwritten with a
+        # real estimate the first time either of those methods runs.
+        self.min_AF = 0.0
 
     def _base_acquisition(self, mu, sigma, y_best=None):
-            sigma = np.maximum(sigma, 1e-9)
-    
-            if self.kind == "ei":
-                if y_best is None:
-                    raise ValueError(
-                        "y_best is required for EI."
-                    )
-                return self._ei(mu, sigma, y_best)
-    
-            if self.kind == "lcb":
-                kappa = self.af_kwards.get("kappa", 1.0)
-                return self._lcb(mu, sigma, kappa)
+        sigma = np.maximum(sigma, 1e-9)
 
-            raise ValueError(f"Unsupported AF: {self.kind}")
+        if self.kind == "ei":
+            if y_best is None:
+                raise ValueError("y_best is required for EI.")
+            return self._ei(mu, sigma, y_best)
+
+        if self.kind == "lcb":
+            kappa = self.af_kwards.get("kappa", 1.0)
+            return self._lcb(mu, sigma, kappa)
+
+        raise ValueError(f"Unsupported AF: {self.kind}")
 
     def __call__(self, X, gp, y_best=None):
-        
+
         mu, sigma = gp.predict(X, return_std=True)
         sigma = np.maximum(sigma, 1e-9)
 
         af_value = self._base_acquisition(mu, sigma, y_best=y_best)
 
-        if self.normalize_AF:
-            af_value = np.maximum((af_value - self.min_AF) / (self.max_AF - self.min_AF), 0.0)
+        if self.shift_AF:
+            af_value = af_value - self.min_AF
+
+        indicator_mask = np.ones(X.shape[0], dtype=bool)
+        probability_mask = np.ones(X.shape[0], dtype=float)
 
         if self.ml_on_bounds:
             if self.ml_on_bounds_parameters["task"] == 'regression':
-                indicator = np.ones(X.shape[0], dtype=bool)
                 for i, model in enumerate(self.ml_bounds):
                     value = model.predict(X).ravel()
                     lb, ub = self.ml_on_bounds_parameters["constraint_bounds"][i]
-                    indicator &= (value >= lb) & (value <= ub)
-
-                af_value[~indicator] = 0
+                    indicator_mask &= (value >= lb) & (value <= ub)
 
             else:
                 probabilities = np.ones(X.shape[0])
                 for i, model in enumerate(self.ml_bounds):
                     value = model.predict_proba(X)[:, 1]
                     probabilities *= value
-                af_value *= probabilities
+                probability_mask *= probabilities
 
         if self.ml_on_target:
             if self.ml_on_target_parameters["task"] == 'regression':
-                value = self.ml_target.predict(X).ravel()
-                af_value *= (value <= y_best)
+                if y_best < np.inf:
+                    value = self.ml_target.predict(X).ravel()
+                    indicator_mask &= (value <= y_best)
 
-            else: 
+            else:
                 value = self.ml_target.predict_proba(X)[:, 1]
-                af_value *= value
+                probability_mask *= value
+
+        af_value = af_value * probability_mask
+        af_value[~indicator_mask] = -sys.float_info.epsilon
 
         return af_value
 
@@ -117,35 +127,29 @@ class AF:
         improvement = y_best - mu
         Z = improvement / sigma
         return improvement * norm.cdf(Z) + sigma * norm.pdf(Z)
-    
+
     def _lcb(self, mu, sigma, kappa=1.0):
         return -(mu - kappa * sigma)
-    
+
     def maximise(self, gp, bounds, y_best=None, n_restarts=10):
         bounds = np.asarray(bounds)
 
-        if self.normalize_AF:
+        if self.shift_AF:
+            def raw_af(X_):
+                x = np.atleast_2d(X_)
+                mu, sigma = gp.predict(x, return_std=True)
+                sigma = np.maximum(sigma, 1e-9)
+                return self._base_acquisition(mu, sigma, y_best=y_best)
 
-            def est_min_AF(X_):
-                x = np.atleast_2d(X_)
-                mu, sigma = gp.predict(x, return_std=True)
-                return self._lcb(mu, sigma)
-            
-            def est_max_AF(X_):
-                x = np.atleast_2d(X_)
-                mu, sigma = gp.predict(x, return_std=True)
-                return -self._lcb(mu, sigma)
-            
             self.min_AF = np.inf
-            self.max_AF = -np.inf
             for _ in range(30):
-                x0 = self.rng.uniform(self.bounds[:, 0], self.bounds[:, 1])
-                
-                trial_min_AF = minimize(est_min_AF, x0=x0, bounds=self.bounds, method="L-BFGS-B").fun
-                trial_max_AF = minimize(est_max_AF, x0=x0, bounds=self.bounds, method="L-BFGS-B").fun
+                x0 = self.rng.uniform(bounds[:, 0], bounds[:, 1])
 
-                self.min_AF = min(self.min_AF, trial_min_AF)
-                self.max_AF = max(self.max_AF, trial_max_AF)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    trial_min = minimize(raw_af, x0=x0, bounds=bounds, method="L-BFGS-B").fun
+
+                self.min_AF = min(self.min_AF, trial_min)
 
         def objective(x):
             if np.any(np.isnan(x)):
@@ -158,10 +162,9 @@ class AF:
         best_val = np.inf
         restarts = 0
 
-        # Could be a deadlock, check
         while restarts <= n_restarts or best_val == np.inf:
             x0 = self.rng.uniform(bounds[:, 0], bounds[:, 1])
-            
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 res = minimize(objective, x0=x0, bounds=bounds, method="L-BFGS-B")
@@ -173,16 +176,15 @@ class AF:
             restarts += 1
 
         return best_x
-    
+
     def maximise_over_dataset(self, gp, X_cand, y_best=None, return_index=False, tie_tol=0.0, used_idx=None):
         X_cand = np.asarray(X_cand)
 
-        if self.normalize_AF:
+        if self.shift_AF:
             mu, sigma = gp.predict(X_cand, return_std=True)
+            sigma = np.maximum(sigma, 1e-9)
             base = self._base_acquisition(mu, sigma, y_best=y_best)
-
             self.min_AF = float(np.min(base))
-            self.max_AF = float(np.max(base))
 
         vals = self(X_cand, gp=gp, y_best=y_best).ravel()
 

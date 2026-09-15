@@ -3,6 +3,7 @@ import warnings
 from sklearn.exceptions import ConvergenceWarning
 from scipy.optimize import differential_evolution
 from scipy.stats import qmc
+from random import randint
 
 from GaussianProcess import *
 from AcquisitionFunction import *
@@ -1500,7 +1501,7 @@ def main():
                         length_scale=1.0)
 
         af = AF(
-            kind="lcb",
+            kind="ei",
             kappa=1.0,
             ml_on_bounds=True,
             ml_on_bounds_parameters={
@@ -1511,7 +1512,7 @@ def main():
             ml_on_target=True,
             ml_on_target_parameters={
                 "name": "ridge",
-                "task": "regression",
+                "task": "classification",
             },
             bounds=bounds,
             random_state=random_state,
@@ -1551,7 +1552,7 @@ def main():
     # run_case(
     #     case_name="continuous",
     #     discrete_values=None,              # or [None, None]
-    #     random_state=16
+    #     random_state=randint(1,1000)
     # )
     
     # run_case(
@@ -1560,7 +1561,7 @@ def main():
     #         None,                          # x1 continuous
     #         np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, 1.0, ..., 5.0}
     #     ],
-    #     random_state=16
+    #     random_state=randint(1,1000)
     # )
 
     # run_case(
@@ -1569,7 +1570,7 @@ def main():
     #         np.linspace(0.0, 5.0, 11),     # x1 in {0.0, 0.5, ..., 5.0}
     #         np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, ..., 5.0}
     #     ],
-    #     random_state=16
+    #     random_state=randint(1,1000)
     # )
 
     print(f"\n=== ligen ===")
@@ -1594,6 +1595,7 @@ def main():
         t_col="TIME_TOTAL",
     )
 
+    # print(f"\n=== oscarp ===")
     # filename = "resources/oscarp.csv"
 
     # x_cols = [
@@ -1613,9 +1615,9 @@ def main():
     # )
 
     bounds = np.column_stack([ds.X.min(axis=0), ds.X.max(axis=0)])
-    random_state = 12
+    random_state = randint(1,1000)
 
-    gp_builder = GP(kernel_name="Matern", 
+    gp_builder = GP(kernel_name="RBF", 
                     random_state=random_state, 
                     length_scale=1.0)
 
@@ -1626,12 +1628,12 @@ def main():
         ml_on_bounds_parameters={
             "name": "ridge",
             "task": "regression",
-            "constraint_bounds": [(0.0, 2.1)],
+            "constraint_bounds": [(0.0, 2.0)],
         },
         ml_on_target=True,
         ml_on_target_parameters={
             "name": "ridge",
-            "task": "regression",
+            "task": "classification",
             #"hidden_layer_sizes": (100, 50),
             #"max_iter": 500
         },
@@ -1655,6 +1657,7 @@ def main():
         random_state=random_state,
         logger=logger,
         dataset=ds,
+        epsilon_greedy=0.1,
         reparameterization=True
     )
 
@@ -1674,7 +1677,7 @@ def main():
     bo.initialize()
     #bo.initialize(X0=X_init)    # samples initial points from ds.X / ds.y
 
-    x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
+    x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
     print("Best feasible x =", x_best, " y =", y_best)
 
     # CSV metrics naming
