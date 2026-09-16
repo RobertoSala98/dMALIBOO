@@ -4,6 +4,7 @@ from sklearn.exceptions import ConvergenceWarning
 from scipy.optimize import differential_evolution
 from scipy.stats import qmc
 from random import randint
+from multiprocessing.pool import ThreadPool
 
 from GaussianProcess import *
 from AcquisitionFunction import *
@@ -1135,24 +1136,27 @@ class BO:
         self._best_reparameterization_trial = None
 
         def objective(theta):
-            return self._reparameterization_objective(
+            obj_value =  self._reparameterization_objective(
                 theta=theta,
                 x_original=x_original,
                 y_best=y_best,
                 lambda_current=lambda_current,
                 has_af_lambda=has_af_lambda,
             )
+            return obj_value
 
-        res = differential_evolution(
-            objective,
-            bounds=bounds,
-            seed=self.random_state,
-            strategy="best1bin",
-            maxiter=30,
-            popsize=8,
-            polish=False,
-            workers=1,
-        )
+        with ThreadPool(processes=8) as pool:  # or os.cpu_count()
+            res = differential_evolution(
+                objective,
+                bounds=bounds,
+                seed=self.random_state,
+                strategy="best1bin",
+                maxiter=30,
+                popsize=8,
+                polish=False,
+                workers=pool.map,
+                updating="deferred",  # required when workers != 1
+            )
 
         best_trial = self._best_reparameterization_trial
 
@@ -1617,18 +1621,18 @@ def main():
     bounds = np.column_stack([ds.X.min(axis=0), ds.X.max(axis=0)])
     random_state = randint(1,1000)
 
-    gp_builder = GP(kernel_name="RBF", 
+    gp_builder = GP(kernel_name="Matern", 
                     random_state=random_state, 
                     length_scale=1.0)
 
     af = AF(
-        kind="lcb",
+        kind="ei",
         kappa=1.0,
         ml_on_bounds=True,
         ml_on_bounds_parameters={
             "name": "ridge",
             "task": "regression",
-            "constraint_bounds": [(0.0, 2.0)],
+            "constraint_bounds": [(0.0, 2.1)],
         },
         ml_on_target=True,
         ml_on_target_parameters={
@@ -1677,7 +1681,7 @@ def main():
     bo.initialize()
     #bo.initialize(X0=X_init)    # samples initial points from ds.X / ds.y
 
-    x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
+    x_best, y_best = bo.run(n_iterations=150, n_restarts=10, verbose=True)
     print("Best feasible x =", x_best, " y =", y_best)
 
     # CSV metrics naming
