@@ -12,7 +12,7 @@ class Logger:
         self.dim = int(dim)
         self.rows = []
 
-    def log(self, iter, x_next, y_next, feasible=None, y_best_feasible=None, accuracy_ml_bounds=None, accuracy_ml_target=None):
+    def log(self, iter, x_next, y_next, feasible=None, y_best_feasible=None, accuracy_ml_bounds=None, accuracy_ml_target=None, note="", stepTime=0.0, evalTime=0.0):
         x_next = np.asarray(x_next).ravel()
         if x_next.size != self.dim:
             raise ValueError(f"x_next must have length {self.dim}, got {x_next.size}")
@@ -24,7 +24,10 @@ class Logger:
             "feasible": None if feasible is None else bool(feasible),
             "y_best_feasible": None if y_best_feasible is None else float(y_best_feasible),
             "accuracy_ml_bounds": None if accuracy_ml_bounds is None else accuracy_ml_bounds,
-            "accuracy_ml_target": None if accuracy_ml_target is None else accuracy_ml_target
+            "accuracy_ml_target": None if accuracy_ml_target is None else accuracy_ml_target,
+            "note": note,
+            "step_time": stepTime,
+            "evaluation_time": evalTime
         }
 
         self.rows.append(row)
@@ -56,7 +59,10 @@ class Logger:
             [f"x{i}" for i in range(self.dim)] + 
             ["y", "feasible", "y_best_feasible"] + 
             [f"{bounds_metric}_ml_bounds_{i+1}" for i in range(n_constraints)] + 
-            [f"{target_metric}_ml_target"]
+            [f"{target_metric}_ml_target"] + 
+            ["note"] + 
+            ["step_time"] + 
+            ["evaluation_time"]
         )
         
         with open(path, "w", newline="") as f:

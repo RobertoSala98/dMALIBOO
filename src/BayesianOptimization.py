@@ -6,6 +6,8 @@ from scipy.stats import qmc
 from random import randint
 from multiprocessing.pool import ThreadPool
 
+from time import time
+
 from GaussianProcess import *
 from AcquisitionFunction import *
 from Logger import Logger
@@ -975,11 +977,15 @@ class BO:
             warnings.simplefilter("ignore", ConvergenceWarning)
             self.gp.fit(self.X_train, self.y_train)
 
+        start_time = time()
+
         best_feas, _ = self.best_feasible_value()
         y_best = best_feas if best_feas is not None else float(np.inf)
 
         constraint_metrics = self.fit_constraint_models()
         target_metrics = self.fit_target_model(y_best)
+
+        self.note = ""
 
         if self.dataset is not None:
             X_cand = self.dataset.X
@@ -993,6 +999,7 @@ class BO:
 
             if self.epsilon_greedy > 0.0 and (self.rng.random() < self.epsilon_greedy):
                 idx_next = self._epsilon_pick_dataset_index(idx_pool)
+                self.note = "epsilon_greedy"
             else:
                 if not self.reparameterization:
                     X_pool = X_cand[idx_pool]
@@ -1037,6 +1044,8 @@ class BO:
                 g_next = np.asarray(self.dataset.G[idx_next], dtype=float).reshape(1, -1)
                 self.G_train = g_next if self.G_train is None else np.vstack([self.G_train, g_next])
 
+            evaluation_time = self.dataset.t[idx_next]
+
             is_feasible = bool(self.feasibility_mask_idx([idx_next])[0])
 
         else:
@@ -1068,7 +1077,9 @@ class BO:
                 else:
                     x_next = x_next_cont
 
+            start_eval_time = time()
             y_next = float(self.objective_function(x_next).ravel()[0])
+            evaluation_time = time() - start_eval_time
 
             self.X_train = np.vstack([self.X_train, x_next])
             self.y_train = np.append(self.y_train, y_next)
@@ -1084,6 +1095,7 @@ class BO:
             is_feasible = bool(mask_next[0])
 
         best_feas_after, _ = self.best_feasible_value()
+        step_time = time() - start_time
 
         if self.logger is not None:
             self.logger.log(
@@ -1094,6 +1106,9 @@ class BO:
                 y_best_feasible=best_feas_after,
                 accuracy_ml_bounds=constraint_metrics,
                 accuracy_ml_target=target_metrics,
+                note = self.note,
+                stepTime = step_time,
+                evalTime = evaluation_time
             )
 
         return x_next, y_next, y_best
@@ -1167,7 +1182,10 @@ class BO:
                 RuntimeWarning,
             )
             idx_next = self._fallback_best_unvisited(y_best=y_best)
+            self.note = "reparameterization_unsuccesful"
             return idx_next
+
+        self.note = "reparameterized"
 
         theta_opt = best_trial["theta"]
         idx_next = int(best_trial["idx"])
@@ -1553,29 +1571,29 @@ def main():
 
         bo.logger.to_csv(f"test_{case_name}.csv", bounds_metric, target_metric)
 
-    # run_case(
-    #     case_name="continuous",
-    #     discrete_values=None,              # or [None, None]
-    #     random_state=randint(1,1000)
-    # )
+    run_case(
+        case_name="continuous",
+        discrete_values=None,              # or [None, None]
+        random_state=randint(1,1000)
+    )
     
-    # run_case(
-    #     case_name="mixed_x2_discrete",
-    #     discrete_values=[
-    #         None,                          # x1 continuous
-    #         np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, 1.0, ..., 5.0}
-    #     ],
-    #     random_state=randint(1,1000)
-    # )
+    run_case(
+        case_name="mixed_x2_discrete",
+        discrete_values=[
+            None,                          # x1 continuous
+            np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, 1.0, ..., 5.0}
+        ],
+        random_state=randint(1,1000)
+    )
 
-    # run_case(
-    #     case_name="discrete_both",
-    #     discrete_values=[
-    #         np.linspace(0.0, 5.0, 11),     # x1 in {0.0, 0.5, ..., 5.0}
-    #         np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, ..., 5.0}
-    #     ],
-    #     random_state=randint(1,1000)
-    # )
+    run_case(
+        case_name="discrete_both",
+        discrete_values=[
+            np.linspace(0.0, 5.0, 11),     # x1 in {0.0, 0.5, ..., 5.0}
+            np.linspace(0.0, 5.0, 11),     # x2 in {0.0, 0.5, ..., 5.0}
+        ],
+        random_state=randint(1,1000)
+    )
 
     print(f"\n=== ligen ===")
     filename = "resources/ligen.csv"
@@ -1632,7 +1650,7 @@ def main():
         ml_on_bounds_parameters={
             "name": "ridge",
             "task": "regression",
-            "constraint_bounds": [(0.0, 2.1)],
+            "constraint_bounds": [(0.0, 300)],
         },
         ml_on_target=True,
         ml_on_target_parameters={
@@ -1681,7 +1699,7 @@ def main():
     bo.initialize()
     #bo.initialize(X0=X_init)    # samples initial points from ds.X / ds.y
 
-    x_best, y_best = bo.run(n_iterations=150, n_restarts=10, verbose=True)
+    x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
     print("Best feasible x =", x_best, " y =", y_best)
 
     # CSV metrics naming
