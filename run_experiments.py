@@ -27,6 +27,9 @@ def main():
         folder = Path("output/schwefel")
         folder.mkdir(parents=True, exist_ok=True)
 
+        folder = Path("output/schwefel/kernel_AF")
+        folder.mkdir(parents=True, exist_ok=True)
+
         d = 8
 
         discrete_values = [
@@ -71,10 +74,17 @@ def main():
                           696177030, 132739125, 274947332, 452787733, 314249226, 849341244])
 
         for seed in seeds:
+
+            ### Main kernel_AF cominations ###
+            # Matern EI
+            path = "output/schwefel/kernel_AF/Matern_EI"
+            folder = Path(path)
+            folder.mkdir(parents=True, exist_ok=True)
+
             gp_builder = GP(kernel_name="Matern", 
                 random_state=seed, 
                 length_scale=1.0,
-                nu=1.5)
+                nu=2.5)
 
             af = AF(
                 kind="ei",
@@ -88,7 +98,7 @@ def main():
                 ml_on_target=True,
                 ml_on_target_parameters={
                     "name": "ridge",
-                    "task": "classification",
+                    "task": "indicator",
                 },
                 bounds=bounds,
                 random_state=seed,
@@ -106,7 +116,8 @@ def main():
                 logger=logger,
                 random_state=seed,
                 discrete_values=np.array(discrete_values[:d]),
-                discrete_refine=True
+                discrete_refine=True,
+                epsilon_greedy=0.1
             )
 
             bo.initialize()
@@ -123,7 +134,185 @@ def main():
             else:
                 target_metric = ""
 
-            bo.logger.to_csv(f"Schwefel_{seed}.csv", bounds_metric, target_metric)
+            bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+
+            # Matern LCB
+            path = "output/schwefel/kernel_AF/Matern_LCB"
+            folder = Path(path)
+            folder.mkdir(parents=True, exist_ok=True)
+
+            gp_builder = GP(kernel_name="Matern", 
+                random_state=seed, 
+                length_scale=1.0,
+                nu=2.5)
+
+            af = AF(
+                kind="lcb",
+                kappa=1.0,
+                ml_on_bounds=True,
+                ml_on_bounds_parameters={
+                    "name": "ridge",
+                    "task": "regression",
+                    "constraint_bounds": [[0, constr_values[d]]],
+                },
+                ml_on_target=True,
+                ml_on_target_parameters={
+                    "name": "ridge",
+                    "task": "indicator",
+                },
+                bounds=bounds,
+                random_state=seed,
+            )
+
+            logger = Logger(bounds.shape[0])
+
+            bo = BO(
+                objective_function=schwefel,
+                domain_bounds=bounds,
+                gp_builder=gp_builder,
+                af=af,
+                constraint_functions=[max_sqrt_abs],
+                initial_points=10,
+                logger=logger,
+                random_state=seed,
+                discrete_values=np.array(discrete_values[:d]),
+                discrete_refine=True,
+                epsilon_greedy=0.1
+            )
+
+            bo.initialize()
+            x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
+            print("Best feasible: x =", x_best, ", y =", y_best)
+
+            if af.ml_on_bounds:
+                bounds_metric = "mape" if af.ml_on_bounds_parameters["task"] == "regression" else "accuracy"
+            else:
+                bounds_metric = ""
+
+            if af.ml_on_target:
+                target_metric = "mape" if af.ml_on_target_parameters["task"] == "regression" else "accuracy"
+            else:
+                target_metric = ""
+
+            bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+
+            # RBF EI
+            path = "output/schwefel/kernel_AF/RBF_EI"
+            folder = Path(path)
+            folder.mkdir(parents=True, exist_ok=True)
+
+            gp_builder = GP(kernel_name="RBF", 
+                random_state=seed, 
+                length_scale=1.0)
+
+            af = AF(
+                kind="ei",
+                kappa=1.0,
+                ml_on_bounds=True,
+                ml_on_bounds_parameters={
+                    "name": "ridge",
+                    "task": "regression",
+                    "constraint_bounds": [[0, constr_values[d]]],
+                },
+                ml_on_target=True,
+                ml_on_target_parameters={
+                    "name": "ridge",
+                    "task": "indicator",
+                },
+                bounds=bounds,
+                random_state=seed,
+            )
+
+            logger = Logger(bounds.shape[0])
+
+            bo = BO(
+                objective_function=schwefel,
+                domain_bounds=bounds,
+                gp_builder=gp_builder,
+                af=af,
+                constraint_functions=[max_sqrt_abs],
+                initial_points=10,
+                logger=logger,
+                random_state=seed,
+                discrete_values=np.array(discrete_values[:d]),
+                discrete_refine=True,
+                epsilon_greedy=0.1
+            )
+
+            bo.initialize()
+            x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
+            print("Best feasible: x =", x_best, ", y =", y_best)
+
+            if af.ml_on_bounds:
+                bounds_metric = "mape" if af.ml_on_bounds_parameters["task"] == "regression" else "accuracy"
+            else:
+                bounds_metric = ""
+
+            if af.ml_on_target:
+                target_metric = "mape" if af.ml_on_target_parameters["task"] == "regression" else "accuracy"
+            else:
+                target_metric = ""
+
+            bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+
+            # RBF LCB
+            path = "output/schwefel/kernel_AF/RBF_LCB"
+            folder = Path(path)
+            folder.mkdir(parents=True, exist_ok=True)
+
+            gp_builder = GP(kernel_name="RBF", 
+                random_state=seed, 
+                length_scale=1.0)
+
+            af = AF(
+                kind="lcb",
+                kappa=1.0,
+                ml_on_bounds=True,
+                ml_on_bounds_parameters={
+                    "name": "ridge",
+                    "task": "regression",
+                    "constraint_bounds": [[0, constr_values[d]]],
+                },
+                ml_on_target=True,
+                ml_on_target_parameters={
+                    "name": "ridge",
+                    "task": "indicator",
+                },
+                bounds=bounds,
+                random_state=seed,
+            )
+
+            logger = Logger(bounds.shape[0])
+
+            bo = BO(
+                objective_function=schwefel,
+                domain_bounds=bounds,
+                gp_builder=gp_builder,
+                af=af,
+                constraint_functions=[max_sqrt_abs],
+                initial_points=10,
+                logger=logger,
+                random_state=seed,
+                discrete_values=np.array(discrete_values[:d]),
+                discrete_refine=True,
+                epsilon_greedy=0.1
+            )
+
+            bo.initialize()
+            x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
+            print("Best feasible: x =", x_best, ", y =", y_best)
+
+            if af.ml_on_bounds:
+                bounds_metric = "mape" if af.ml_on_bounds_parameters["task"] == "regression" else "accuracy"
+            else:
+                bounds_metric = ""
+
+            if af.ml_on_target:
+                target_metric = "mape" if af.ml_on_target_parameters["task"] == "regression" else "accuracy"
+            else:
+                target_metric = ""
+
+            bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
     ### OSCAR-P ###
     if experiments["oscarp"]:
@@ -145,12 +334,6 @@ def main():
         bounds = np.column_stack([ds.X.min(axis=0), ds.X.max(axis=0)])
 
         seeds = np.random.randint(1, int(1e9), repetitions)
-
-
-
-
-    
-
 
 
     ### Query52 ###
