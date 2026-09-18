@@ -10,7 +10,7 @@ from AcquisitionFunction import AF
 from BayesianOptimization import BO
 from Logger import Logger
 
-repetitions = 5
+repetitions = 30
 
 experiments = {
     "schwefel": True,
@@ -98,7 +98,7 @@ def main():
                 ml_on_target=True,
                 ml_on_target_parameters={
                     "name": "ridge",
-                    "task": "indicator",
+                    "task": "regression",
                 },
                 bounds=bounds,
                 random_state=seed,
@@ -113,6 +113,7 @@ def main():
                 af=af,
                 constraint_functions=[max_sqrt_abs],
                 initial_points=10,
+                init_strategy="lhs",
                 logger=logger,
                 random_state=seed,
                 discrete_values=np.array(discrete_values[:d]),
@@ -158,7 +159,7 @@ def main():
                 ml_on_target=True,
                 ml_on_target_parameters={
                     "name": "ridge",
-                    "task": "indicator",
+                    "task": "regression",
                 },
                 bounds=bounds,
                 random_state=seed,
@@ -173,6 +174,7 @@ def main():
                 af=af,
                 constraint_functions=[max_sqrt_abs],
                 initial_points=10,
+                init_strategy="lhs",
                 logger=logger,
                 random_state=seed,
                 discrete_values=np.array(discrete_values[:d]),
@@ -217,7 +219,7 @@ def main():
                 ml_on_target=True,
                 ml_on_target_parameters={
                     "name": "ridge",
-                    "task": "indicator",
+                    "task": "regression",
                 },
                 bounds=bounds,
                 random_state=seed,
@@ -232,6 +234,7 @@ def main():
                 af=af,
                 constraint_functions=[max_sqrt_abs],
                 initial_points=10,
+                init_strategy="lhs",
                 logger=logger,
                 random_state=seed,
                 discrete_values=np.array(discrete_values[:d]),
@@ -276,7 +279,7 @@ def main():
                 ml_on_target=True,
                 ml_on_target_parameters={
                     "name": "ridge",
-                    "task": "indicator",
+                    "task": "regression",
                 },
                 bounds=bounds,
                 random_state=seed,
@@ -291,6 +294,7 @@ def main():
                 af=af,
                 constraint_functions=[max_sqrt_abs],
                 initial_points=10,
+                init_strategy="lhs",
                 logger=logger,
                 random_state=seed,
                 discrete_values=np.array(discrete_values[:d]),
