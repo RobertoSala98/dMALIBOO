@@ -17,7 +17,7 @@ class BO:
     def __init__(self, objective_function, domain_bounds, gp_builder, af, constraint_functions=None, initial_points=10,
                  random_state=16, logger=None, dataset=None, discrete_values=None, discrete_refine=True,
                  epsilon_greedy=0.0, epsilon_max_tries=200, epsilon_feas_threshold=0.5,
-                 init_strategy="lhs", init_params=None, reparameterization=False,
+                 init_strategy="lhs", init_params=None, reparameterization=True,
                  lambda_max_variation=10.0, length_scale_bounds=(1e-9, 10.0), nu_bounds=(0.5, 10.0)):
         
         self.objective_function = objective_function
@@ -1053,6 +1053,7 @@ class BO:
                 x_eps = self._epsilon_pick_continuous_or_mixed(y_best=y_best)
                 if x_eps is not None:
                     x_next = x_eps
+                    self.note = "epsilon_greedy"
                 else:
                     x_next = None
             else:
