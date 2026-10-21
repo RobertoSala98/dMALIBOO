@@ -1378,7 +1378,7 @@ class BO:
             feas_idx = np.where(mask)[0]
             best_idx = feas_idx[np.argmin(self.y_train[feas_idx])]
         else:
-            raise ValueError("No feasible point found.")
+            return np.array([]), np.inf
 
         self.best_idx = best_idx
 
