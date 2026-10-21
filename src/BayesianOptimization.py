@@ -85,7 +85,14 @@ class BO:
             self.dim = self.dataset.dim
             self.domain_bounds = np.column_stack([self.dataset.X.min(axis=0), self.dataset.X.max(axis=0)])
             self.used_idx = np.zeros(self.dataset.n, dtype=bool)
-            self.train_idx = np.array([], dtype=int) 
+            self.train_idx = np.array([], dtype=int)
+
+            _, x_group = np.unique(self.dataset.X, axis=0, return_inverse=True)
+            self.x_group = np.asarray(x_group, dtype=int).ravel()
+            self.n_configs = int(self.x_group.max()) + 1
+
+            order = np.argsort(self.x_group, kind="stable")
+            self.group_rows = np.split(order, np.cumsum(np.bincount(self.x_group, minlength=self.n_configs))[:-1])
 
         self._reparam_scale = np.where(
             self.domain_bounds[:, 1] > self.domain_bounds[:, 0],
@@ -103,6 +110,14 @@ class BO:
 
         self.normalized_domain_diameter = np.sqrt(self.dim)
         self.reparameterization_penalty = 1.0 + np.sqrt(self.dim) + self.lambda_max_variation
+
+    def _mark_visited(self, idx):
+        """Mark every replica of dataset row `idx` (all rows with the same x) as used."""
+        self.used_idx[self.group_rows[self.x_group[idx]]] = True
+
+    def _random_replica(self, idx):
+        """Return a uniformly random row id among all rows with the same x as `idx`."""
+        return int(self.rng.choice(self.group_rows[self.x_group[idx]]))
 
     def _generate_initial_design(self, n, bounds=None, seed=None):
         """
@@ -317,48 +332,36 @@ class BO:
         if existing_idx is None:
             existing_idx = np.empty(0, dtype=int)
         else:
-            existing_idx = np.asarray(
-                existing_idx,
-                dtype=int,
-            ).ravel()
+            existing_idx = np.asarray(existing_idx, dtype=int).ravel()
 
-        if np.unique(existing_idx).size != existing_idx.size:
-            raise ValueError(
-                "existing_idx contains duplicate dataset indices."
-            )
+        existing_groups = self.x_group[existing_idx]
+        if np.unique(existing_groups).size != existing_idx.size:
+            raise ValueError("existing_idx contains duplicate configurations.")
 
         all_idx = np.arange(self.dataset.n, dtype=int)
-        available_idx = np.setdiff1d(
-            all_idx,
-            existing_idx,
-            assume_unique=False,
-        )
+        available_idx = all_idx[~np.isin(self.x_group, existing_groups)]
+        n_available_configs = self.n_configs - existing_groups.size
 
-        if n > available_idx.size:
+        if n > n_available_configs:
             raise ValueError(
-                f"Requested {n} initial rows, but only "
-                f"{available_idx.size} unused dataset rows remain."
+                f"Requested {n} initial points, but only "
+                f"{n_available_configs} unused configurations remain."
             )
 
         if n == 0:
             return np.empty(0, dtype=int)
 
         if self.init_strategy == "random":
-            return self.rng.choice(
-                available_idx,
-                size=n,
-                replace=False,
-            ).astype(int)
+            groups = np.unique(self.x_group[available_idx])
+            chosen = self.rng.choice(groups, size=n, replace=False)
+            # uniform over configurations, then a random replica of each
+            return np.array(
+                [int(self.rng.choice(self.group_rows[g])) for g in chosen],
+                dtype=int,
+            )
 
-        X_design = self._generate_initial_design(
-            n=n,
-            bounds=self.domain_bounds,
-        )
-
-        return self._snap_design_to_dataset_indices(
-            X_design=X_design,
-            available_idx=available_idx,
-        )
+        X_design = self._generate_initial_design(n=n, bounds=self.domain_bounds)
+        return self._snap_design_to_dataset_indices(X_design=X_design, available_idx=available_idx)
 
     def _snap_design_to_dataset_indices(
         self,
@@ -406,10 +409,11 @@ class BO:
                 dtype=int,
             ).ravel()
 
-        if X_design.shape[0] > available_idx.size:
+        n_available_configs = np.unique(self.x_group[available_idx]).size
+        if X_design.shape[0] > n_available_configs:
             raise ValueError(
                 f"Cannot map {X_design.shape[0]} design points to only "
-                f"{available_idx.size} available dataset rows."
+                f"{n_available_configs} available configurations."
             )
 
         X_data = self.dataset.X
@@ -421,17 +425,14 @@ class BO:
 
         for x in X_design:
             X_available = X_data[available]
+            distances = np.linalg.norm((X_available - x) / scale, axis=1)
 
-            distances = np.linalg.norm(
-                (X_available - x) / scale,
-                axis=1,
-            )
-
-            local_pos = int(np.argmin(distances))
-            idx = int(available[local_pos])
+            g = self.x_group[available[int(np.argmin(distances))]]
+            replicas = available[self.x_group[available] == g]
+            idx = int(self.rng.choice(replicas))
 
             selected_idx.append(idx)
-            available = np.delete(available, local_pos)
+            available = available[self.x_group[available] != g]
 
         return np.asarray(selected_idx, dtype=int)
 
@@ -635,24 +636,17 @@ class BO:
 
 
     def _epsilon_pick_dataset_index(self, idx_pool):
-        """
-        idx_pool: 1D array of available candidate indices (unused rows)
-        Returns idx_next or None.
-        """
         idx_pool = np.asarray(idx_pool, dtype=int).ravel()
         if idx_pool.size == 0:
             return None
 
         X_pool = self.dataset.X[idx_pool]
-
-        # if ML bounds not enabled, this degenerates to uniform random unused row
         feas = self._ml_bounds_feasible(X_pool)
 
-        if np.any(feas):
-            return int(self.rng.choice(idx_pool[feas]))
+        cand = idx_pool[feas] if np.any(feas) else idx_pool 
 
-        # fallback: no predicted-feasible rows -> random unused row
-        return int(self.rng.choice(idx_pool))
+        g = int(self.rng.choice(np.unique(self.x_group[cand])))
+        return int(self.rng.choice(cand[self.x_group[cand] == g]))
     
 
     def compute_global_best_feasible_from_dataset(self):
@@ -718,7 +712,7 @@ class BO:
             self.compute_global_best_feasible_from_dataset()
 
             if X0 is None:
-                n_initial = min(int(self.initial_points), n_dataset)
+                n_initial = min(int(self.initial_points), self.n_configs)
 
                 idx0 = self._initial_points_dataset(
                     n=n_initial,
@@ -734,14 +728,12 @@ class BO:
 
                 idx_user = self._dataset_points_to_indices(X0)
 
-                if np.unique(idx_user).size != idx_user.size:
-                    raise ValueError(
-                        "Duplicate dataset indices/configurations in X0."
-                    )
+                if np.unique(self.x_group[idx_user]).size != idx_user.size:
+                    raise ValueError("Duplicate dataset indices/configurations in X0.")
 
                 n_initial = min(
                     max(int(self.initial_points), idx_user.size),
-                    n_dataset,
+                    self.n_configs,
                 )
 
                 n_extra = n_initial - idx_user.size
@@ -756,7 +748,8 @@ class BO:
                     idx_extra,
                 ])
 
-            self.used_idx[idx0] = True
+            for i in idx0:
+                self._mark_visited(int(i))
             self.train_idx = np.asarray(idx0, dtype=int)
 
             self.X_train = np.asarray(
@@ -949,26 +942,22 @@ class BO:
                 f"or an array with shape (n, {self.dim})."
             )
 
-        dataset_rows = {
-            np.ascontiguousarray(
-                row,
-                dtype=float,
-            ).tobytes(): idx
-            for idx, row in enumerate(self.dataset.X)
+        X_data = self.dataset.X
+        group_of_key = {
+            np.ascontiguousarray(X_data[rows[0]], dtype=float).tobytes(): g
+            for g, rows in enumerate(self.group_rows)
         }
 
         indices = []
-
         for row in np.asarray(X0, dtype=float):
             key = np.ascontiguousarray(row).tobytes()
-
-            if key not in dataset_rows:
+            if key not in group_of_key:
                 raise ValueError(
                     "A row in X0 does not exactly match a row in dataset.X. "
                     "Pass dataset indices instead, or use an exact dataset row."
                 )
-
-            indices.append(dataset_rows[key])
+            g = group_of_key[key]
+            indices.append(int(self.rng.choice(self.group_rows[g])))
 
         return np.asarray(indices, dtype=int)
 
@@ -1002,16 +991,10 @@ class BO:
                 self.note = "epsilon_greedy"
             else:
                 if not self.reparameterization:
-                    X_pool = X_cand[idx_pool]
-
-                    pos = self.af.maximise_over_dataset(
-                        gp=self.gp,
-                        X_cand=X_pool,
-                        y_best=y_best,
-                        return_index=True,
-                    )
-
-                    idx_next = int(idx_pool[int(pos)])
+                    groups = np.unique(self.x_group[idx_pool])
+                    idx_rep = np.array([self.group_rows[g][0] for g in groups])
+                    pos = self.af.maximise_over_dataset(gp=self.gp, X_cand=X_cand[idx_rep], y_best=y_best, return_index=True)
+                    idx_next = int(idx_rep[int(pos)])
 
                 else:
                     pos = self.af.maximise_over_dataset(
@@ -1032,7 +1015,9 @@ class BO:
                     else:
                         idx_next = idx_cand
 
-            self.used_idx[idx_next] = True
+            idx_next = self._random_replica(idx_next)
+
+            self._mark_visited(idx_next)
             self.train_idx = np.append(self.train_idx, idx_next)
 
             x_next = X_cand[idx_next].reshape(1, -1)

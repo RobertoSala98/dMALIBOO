@@ -13,10 +13,10 @@ from Logger import Logger
 repetitions = 30
 
 experiments = {
-    "schwefel": True,
-    "oscarp": False,
-    "query52": False,
-    "stereomatch": False,
+    "schwefel": False,
+    "oscarp": True,
+    "query52": True,
+    "stereomatch": True,
     "ligen": False
 }
 
@@ -995,73 +995,73 @@ def main():
         for seed in seeds:
             for constr in constr_values:
 
-                # path = f"output/oscarp/reference/{constr}"
-                # folder = Path(path)
-                # folder.mkdir(parents=True, exist_ok=True)
+                path = f"output/oscarp/reference/{constr}"
+                folder = Path(path)
+                folder.mkdir(parents=True, exist_ok=True)
 
-                # gp_builder = GP(kernel_name="Matern", 
-                #     random_state=seed, 
-                #     length_scale=1.0,
-                #     nu=2.5)
+                gp_builder = GP(kernel_name="Matern", 
+                    random_state=seed, 
+                    length_scale=1.0,
+                    nu=2.5)
 
-                # af = AF(
-                #     kind="ei",
-                #     kappa=1.0,
-                #     ml_on_bounds=True,
-                #     ml_on_bounds_parameters={
-                #         "name": "ridge",
-                #         "task": "regression",
-                #         "constraint_bounds": [[0, constr]],
-                #     },
-                #     ml_on_target=True,
-                #     ml_on_target_parameters={
-                #         "name": "ridge",
-                #         "task": "regression",
-                #     },
-                #     bounds=bounds,
-                #     random_state=seed,
-                # )
+                af = AF(
+                    kind="ei",
+                    kappa=1.0,
+                    ml_on_bounds=True,
+                    ml_on_bounds_parameters={
+                        "name": "ridge",
+                        "task": "regression",
+                        "constraint_bounds": [[0, constr]],
+                    },
+                    ml_on_target=True,
+                    ml_on_target_parameters={
+                        "name": "ridge",
+                        "task": "regression",
+                    },
+                    bounds=bounds,
+                    random_state=seed,
+                )
 
-                # logger = Logger(dim=ds.dim)
+                logger = Logger(dim=ds.dim)
 
-                # def dummy_objective(X):
-                #     raise RuntimeError("Objective should not be called in dataset mode.")
+                def dummy_objective(X):
+                    raise RuntimeError("Objective should not be called in dataset mode.")
 
-                # bo = BO(
-                #     objective_function=dummy_objective,
-                #     domain_bounds=bounds,
-                #     gp_builder=gp_builder,
-                #     af=af,
-                #     constraint_functions=[],
-                #     initial_points=3,
-                #     init_strategy="lhs",
-                #     random_state=seed,
-                #     logger=logger,
-                #     dataset=ds,
-                #     epsilon_greedy=0.1,
-                #     reparameterization=True
-                # )
+                bo = BO(
+                    objective_function=dummy_objective,
+                    domain_bounds=bounds,
+                    gp_builder=gp_builder,
+                    af=af,
+                    constraint_functions=[],
+                    initial_points=3,
+                    init_strategy="lhs",
+                    random_state=seed,
+                    logger=logger,
+                    dataset=ds,
+                    epsilon_greedy=0.1,
+                    reparameterization=True
+                )
 
-                # bo.initialize()
+                bo.initialize()
 
-                # x_best, y_best = bo.run(n_iterations=10, n_restarts=10, verbose=True)
-                # print("Best feasible x =", x_best, " y =", y_best)
+                x_best, y_best = bo.run(n_iterations=10, n_restarts=10, verbose=True)
+                print("Best feasible x =", x_best, " y =", y_best)
 
-                # bounds_metric = "mape"
-                # target_metric = "mape"
-                # bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+                bounds_metric = "mape"
+                target_metric = "mape"
+                bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
                 # kernel_AF combinations
                 for kernel in ["Matern", "RBF"]:
                     for af_kind in ["ei", "lcb"]:
 
-                        if kernel == "Matern" and af_kind == "ei":
-                            os.system("cp -r output/oscarp/reference output/oscarp/Matern_EI")
-                            continue
-
                         path = f"output/oscarp/{kernel}_{af_kind}/{constr}"
                         folder = Path(path)
                         folder.mkdir(parents=True, exist_ok=True)
+
+                        if kernel == "Matern" and af_kind == "ei":
+                            os.system(f"cp -r output/oscarp/reference/{constr}/{seed}.csv output/oscarp/{kernel}_{af_kind}/{constr}/{seed}.csv")
+                            continue
 
                         if kernel == "Matern":
                             gp_builder = GP(kernel_name=kernel, 

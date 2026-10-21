@@ -292,39 +292,78 @@ class Dataset:
 
         return y_min
 
-def main():
-    filename = "resources/muDock.csv"
+    def has_repeated_x(self, return_info=False):
+        """
+        Check whether several rows share exactly the same x (same values in all x_cols).
 
-    x_cols = ["generations", "mutation", "population", "tournament"]
+        Parameters
+        ----------
+        return_info : bool
+            If True, also return a dict with details about the repetitions.
+
+        Returns
+        -------
+        bool, or (bool, dict) if return_info=True
+            info keys:
+            n_rows          : total number of rows
+            n_unique        : number of distinct x configurations
+            n_repeated      : number of configurations that appear more than once
+            n_extra_rows    : rows beyond the first one of each configuration
+                                (n_rows - n_unique)
+            max_replicas    : largest number of rows sharing one x
+            replicas_counts : array of replica counts per configuration (length n_unique)
+        """
+        _, counts = np.unique(self.X, axis=0, return_counts=True)
+
+        has_repeats = bool(np.any(counts > 1))
+
+        if not return_info:
+            return has_repeats
+
+        info = {
+            "n_rows": self.n,
+            "n_unique": int(counts.size),
+            "n_repeated": int(np.sum(counts > 1)),
+            "n_extra_rows": int(self.n - counts.size),
+            "max_replicas": int(counts.max()),
+            "replicas_counts": counts,
+        }
+        return has_repeats, info
+
+def main():
+    filename = "resources/query52_vm_ram.csv"
+    x_cols = ["#vm","ram"]
 
     ds = Dataset.from_file(
         filename,
         x_cols=x_cols,
-        y_col="median_energy",
-        g_cols=["execution_time"],
-        t_col="execution_time",
+        y_col="cost",
+        g_cols=["time"],
+        t_col="time",
     )
 
-    print("Loaded file:", ds.path)
-    print("n =", ds.n)
-    print("dim =", ds.dim)
-    print("Columns:", ds.colnames)
+    print(ds.has_repeated_x(return_info=True))
 
-    print("\nFirst row:")
-    print("X[0] =", ds.X[0].tolist())
-    print("y[0] =", float(ds.y[0]))
-    #print("t[0] =", None if ds.t is None else float(ds.t[0]))
+    # print("Loaded file:", ds.path)
+    # print("n =", ds.n)
+    # print("dim =", ds.dim)
+    # print("Columns:", ds.colnames)
 
-    print("\nShapes:")
-    print("X shape:", ds.X.shape)
-    print("y shape:", ds.y.shape)
-    print("G shape:", None if ds.G is None else ds.G.shape)
-    #print("t shape:", None if ds.t is None else ds.t.shape)
+    # print("\nFirst row:")
+    # print("X[0] =", ds.X[0].tolist())
+    # print("y[0] =", float(ds.y[0]))
+    # #print("t[0] =", None if ds.t is None else float(ds.t[0]))
 
-    y_min = ds.min_with_constraints({
-        "execution_time": ("<=", 100)
-    })
-    print("Minimum cost with execution_time <= 0.1:", y_min)
+    # print("\nShapes:")
+    # print("X shape:", ds.X.shape)
+    # print("y shape:", ds.y.shape)
+    # print("G shape:", None if ds.G is None else ds.G.shape)
+    # #print("t shape:", None if ds.t is None else ds.t.shape)
+
+    # y_min = ds.min_with_constraints({
+    #     "execution_time": ("<=", 100)
+    # })
+    # print("Minimum cost with execution_time <= 0.1:", y_min)
 
 
 if __name__ == "__main__":

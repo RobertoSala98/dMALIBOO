@@ -363,65 +363,65 @@ def main():
     # }
     # plot_results(main_folder, folders, best_values[d])
 
-    # # oscarp
-    # constr_values = [150, 300, 450, 600]
-    # opt_values = [0.174361111, 0.174361111, 0.174361111, 0.174361111]
+    # oscarp
+    constr_values = [150, 300, 450, 600]
+    opt_values = [0.174361111, 0.174361111, 0.174361111, 0.174361111]
+
+    for id in range(len(constr_values)):
+        constr_value = constr_values[id]
+        opt_value = opt_values[id]
+        path = f"output/oscarp/results/{constr_value}"
+        folder = Path(path)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        folders = {
+            "Matern + EI": f"output/oscarp/Matern_ei/{constr_value}",
+            "Matern + LCB": f"output/oscarp/Matern_lcb/{constr_value}",
+            "RBF + EI": f"output/oscarp/RBF_ei/{constr_value}",
+            "RBF + LCB": f"output/oscarp/RBF_lcb/{constr_value}",
+        }
+
+        plot_results(path, folders, opt_value)
+
+    # query52
+    # constr_values = [262887, 334000, 407000, 645000, 2250000]
+    # opt_values = [682215, 682215, 682215, 682215, 682215]
 
     # for id in range(len(constr_values)):
     #     constr_value = constr_values[id]
     #     opt_value = opt_values[id]
-    #     path = f"output/oscarp/results/{constr_value}"
+    #     path = f"output/query52/results/{constr_value}"
     #     folder = Path(path)
     #     folder.mkdir(parents=True, exist_ok=True)
 
     #     folders = {
-    #         "Matern + EI": f"output/oscarp/Matern_EI/{constr_value}",
-    #         "Matern + LCB": f"output/oscarp/Matern_lcb/{constr_value}",
-    #         "RBF + EI": f"output/oscarp/RBF_ei/{constr_value}",
-    #         "RBF + LCB": f"output/oscarp/RBF_lcb/{constr_value}",
+    #         "Matern + EI": f"output/query52/Matern_ei/{constr_value}",
+    #         "Matern + LCB": f"output/query52/Matern_lcb/{constr_value}",
+    #         "RBF + EI": f"output/query52/RBF_ei/{constr_value}",
+    #         "RBF + LCB": f"output/query52/RBF_lcb/{constr_value}",
     #     }
 
     #     plot_results(path, folders, opt_value)
 
-    # query52
-    constr_values = [262887, 334000, 407000, 645000, 2250000]
-    opt_values = [682215, 682215, 682215, 682215, 682215]
+    # # stereomatch
+    # constr_values = [8000, 10000, 12000, 17000, 20000, 40000]
+    # opt_values = [50776.0, 45525.0, 40196.0, 40196.0, 37412.0, 36791.0]
 
-    for id in range(len(constr_values)):
-        constr_value = constr_values[id]
-        opt_value = opt_values[id]
-        path = f"output/query52/results/{constr_value}"
-        folder = Path(path)
-        folder.mkdir(parents=True, exist_ok=True)
+    # for id in range(len(constr_values)):
+    #     constr_value = constr_values[id]
+    #     opt_value = opt_values[id]
+    #     path = f"output/stereomatch/results/{constr_value}"
+    #     folder = Path(path)
+    #     folder.mkdir(parents=True, exist_ok=True)
 
-        folders = {
-            "Matern + EI": f"output/query52/Matern_ei/{constr_value}",
-            "Matern + LCB": f"output/query52/Matern_lcb/{constr_value}",
-            "RBF + EI": f"output/query52/RBF_ei/{constr_value}",
-            "RBF + LCB": f"output/query52/RBF_lcb/{constr_value}",
-        }
+    #     folders = {
+    #         "Matern + EI": f"output/stereomatch/Matern_ei/{constr_value}",
+    #         "Matern + LCB": f"output/stereomatch/Matern_lcb/{constr_value}",
+    #         "RBF + EI": f"output/stereomatch/RBF_ei/{constr_value}",
+    #         "RBF + LCB": f"output/stereomatch/RBF_lcb/{constr_value}",
+    #     }
 
-        plot_results(path, folders, opt_value)
-
-    # stereomatch
-    constr_values = [8000, 10000, 12000, 17000, 20000, 40000]
-    opt_values = [50776.0, 45525.0, 40196.0, 40196.0, 37412.0, 36791.0]
-
-    for id in range(len(constr_values)):
-        constr_value = constr_values[id]
-        opt_value = opt_values[id]
-        path = f"output/stereomatch/results/{constr_value}"
-        folder = Path(path)
-        folder.mkdir(parents=True, exist_ok=True)
-
-        folders = {
-            "Matern + EI": f"output/stereomatch/Matern_ei/{constr_value}",
-            "Matern + LCB": f"output/stereomatch/Matern_lcb/{constr_value}",
-            "RBF + EI": f"output/stereomatch/RBF_ei/{constr_value}",
-            "RBF + LCB": f"output/stereomatch/RBF_lcb/{constr_value}",
-        }
-
-        plot_results(path, folders, opt_value)
+    #     plot_results(path, folders, opt_value)
 
     # # ligen
     # constr_values = [2.0, 2.1, 2.2, 2.45, 2.75]
