@@ -13,10 +13,10 @@ from Logger import Logger
 repetitions = 30
 
 experiments = {
-    "schwefel": False,
-    "oscarp": True,
-    "query52": True,
-    "stereomatch": True,
+    "schwefel": True,
+    "oscarp": False,
+    "query52": False,
+    "stereomatch": False,
     "ligen": False
 }
 
@@ -122,6 +122,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -184,6 +186,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -244,6 +248,8 @@ def main():
                     discrete_refine=True,
                     epsilon_greedy=0.1
                 )
+
+                print(f"{path}/{seed}.csv")
 
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
@@ -306,6 +312,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -329,7 +337,7 @@ def main():
             path = "output/schwefel/initialization_strategy/sobol"
             folder = Path(path)
             folder.mkdir(parents=True, exist_ok=True)
-            os.system("cp -r output/schwefel/kernel_AF/Matern_EI output/schwefel/initialization_strategy/lhs")
+            os.system("cp -r output/schwefel/kernel_AF/Matern_EI/* output/schwefel/initialization_strategy/lhs")
 
             if not os.path.exists(f"{path}/{seed}.csv"):
                 gp_builder = GP(kernel_name="Matern", 
@@ -371,6 +379,8 @@ def main():
                     discrete_refine=True,
                     epsilon_greedy=0.1
                 )
+
+                print(f"{path}/{seed}.csv")
 
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
@@ -434,6 +444,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -457,7 +469,7 @@ def main():
             path = "output/schwefel/ML_approach/indicator_probability"
             folder = Path(path)
             folder.mkdir(parents=True, exist_ok=True)
-            os.system("cp -r output/schwefel/kernel_AF/Matern_EI output/schwefel/ML_approach/indicator_indicator")
+            os.system("cp -r output/schwefel/kernel_AF/Matern_EI/* output/schwefel/ML_approach/indicator_indicator")
 
             if not os.path.exists(f"{path}/{seed}.csv"):
                 gp_builder = GP(kernel_name="Matern", 
@@ -498,6 +510,8 @@ def main():
                     discrete_refine=True,
                     epsilon_greedy=0.1
                 )
+
+                print(f"{path}/{seed}.csv")
 
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
@@ -560,6 +574,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -621,6 +637,8 @@ def main():
                     epsilon_greedy=0.1
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -638,86 +656,13 @@ def main():
                 bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
         for seed in seeds:
-            ### ML model ###
-            path = "output/schwefel/ML_model/Ridge_RF"
-            folder = Path(path)
-            folder.mkdir(parents=True, exist_ok=True)
-            os.system("cp -r output/schwefel/kernel_AF/Matern_EI output/schwefel/ML_model/Ridge_Ridge")
-
-            for constr_model in ["ridge", "rf", "nn", "xgb"]:
-                for target_model in ["ridge", "rf", "nn", "xgb"]:
-
-                    if constr_model == "ridge" and target_model == "ridge":
-                        continue
-                    
-                    path = f"output/schwefel/ML_model/{constr_model}_{target_model}"
-                    folder = Path(path)
-                    folder.mkdir(parents=True, exist_ok=True)
-
-                    if not os.path.exists(f"{path}/{seed}.csv"):
-                        gp_builder = GP(kernel_name="Matern", 
-                            random_state=seed, 
-                            length_scale=1.0,
-                            nu=2.5)
-
-                        af = AF(
-                            kind="ei",
-                            kappa=1.0,
-                            ml_on_bounds=True,
-                            ml_on_bounds_parameters={
-                                "name": constr_model,
-                                "task": "regression",
-                                "constraint_bounds": [[0, constr_values[d]]],
-                            },
-                            ml_on_target=True,
-                            ml_on_target_parameters={
-                                "name": target_model,
-                                "task": "regression",
-                            },
-                            bounds=bounds,
-                            random_state=seed,
-                        )
-
-                        logger = Logger(bounds.shape[0])
-
-                        bo = BO(
-                            objective_function=schwefel,
-                            domain_bounds=bounds,
-                            gp_builder=gp_builder,
-                            af=af,
-                            constraint_functions=[max_sqrt_abs],
-                            initial_points=10,
-                            logger=logger,
-                            random_state=seed,
-                            discrete_values=np.array(discrete_values[:d]),
-                            discrete_refine=True,
-                            epsilon_greedy=0.1
-                        )
-
-                        bo.initialize()
-                        x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
-                        print("Best feasible: x =", x_best, ", y =", y_best)
-
-                        if af.ml_on_bounds:
-                            bounds_metric = "mape" if af.ml_on_bounds_parameters["task"] == "regression" else "accuracy"
-                        else:
-                            bounds_metric = ""
-
-                        if af.ml_on_target:
-                            target_metric = "mape" if af.ml_on_target_parameters["task"] == "regression" else "accuracy"
-                        else:
-                            target_metric = ""
-
-                        bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
-
-        for seed in seeds:
         
             ### Epsilon-greedy ###
             # 0.01
             path = "output/schwefel/epsilon_greedy/0.01"
             folder = Path(path)
             folder.mkdir(parents=True, exist_ok=True)
-            os.system("cp -r output/schwefel/kernel_AF/Matern_EI output/schwefel/epsilon_greedy/0.1")
+            os.system("cp -r output/schwefel/kernel_AF/Matern_EI/* output/schwefel/epsilon_greedy/0.1")
 
             if not os.path.exists(f"{path}/{seed}.csv"):
                 gp_builder = GP(kernel_name="Matern", 
@@ -758,6 +703,8 @@ def main():
                     discrete_refine=True,
                     epsilon_greedy=0.01
                 )
+
+                print(f"{path}/{seed}.csv")
 
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
@@ -820,6 +767,8 @@ def main():
                     epsilon_greedy=0.025
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -880,6 +829,8 @@ def main():
                     discrete_refine=True,
                     epsilon_greedy=0.05
                 )
+
+                print(f"{path}/{seed}.csv")
 
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
@@ -942,6 +893,8 @@ def main():
                     epsilon_greedy=0.2
                 )
 
+                print(f"{path}/{seed}.csv")
+
                 bo.initialize()
                 x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
                 print("Best feasible: x =", x_best, ", y =", y_best)
@@ -957,6 +910,81 @@ def main():
                     target_metric = ""
 
                 bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+
+        for seed in seeds:
+            ### ML model ###
+            path = "output/schwefel/ML_model/Ridge_RF"
+            folder = Path(path)
+            folder.mkdir(parents=True, exist_ok=True)
+            os.system("cp -r output/schwefel/kernel_AF/Matern_EI/* output/schwefel/ML_model/Ridge_Ridge")
+
+            for constr_model in ["ridge", "rf", "nn", "xgb"]:
+                for target_model in ["ridge", "rf", "nn", "xgb"]:
+
+                    if constr_model == "ridge" and target_model == "ridge":
+                        continue
+                    
+                    path = f"output/schwefel/ML_model/{constr_model}_{target_model}"
+                    folder = Path(path)
+                    folder.mkdir(parents=True, exist_ok=True)
+
+                    if not os.path.exists(f"{path}/{seed}.csv"):
+                        gp_builder = GP(kernel_name="Matern", 
+                            random_state=seed, 
+                            length_scale=1.0,
+                            nu=2.5)
+
+                        af = AF(
+                            kind="ei",
+                            kappa=1.0,
+                            ml_on_bounds=True,
+                            ml_on_bounds_parameters={
+                                "name": constr_model,
+                                "task": "regression",
+                                "constraint_bounds": [[0, constr_values[d]]],
+                            },
+                            ml_on_target=True,
+                            ml_on_target_parameters={
+                                "name": target_model,
+                                "task": "regression",
+                            },
+                            bounds=bounds,
+                            random_state=seed,
+                        )
+
+                        logger = Logger(bounds.shape[0])
+
+                        bo = BO(
+                            objective_function=schwefel,
+                            domain_bounds=bounds,
+                            gp_builder=gp_builder,
+                            af=af,
+                            constraint_functions=[max_sqrt_abs],
+                            initial_points=10,
+                            logger=logger,
+                            random_state=seed,
+                            discrete_values=np.array(discrete_values[:d]),
+                            discrete_refine=True,
+                            epsilon_greedy=0.1
+                        )
+
+                        print(f"{path}/{seed}.csv")
+
+                        bo.initialize()
+                        x_best, y_best = bo.run(n_iterations=200, n_restarts=10, verbose=True)
+                        print("Best feasible: x =", x_best, ", y =", y_best)
+
+                        if af.ml_on_bounds:
+                            bounds_metric = "mape" if af.ml_on_bounds_parameters["task"] == "regression" else "accuracy"
+                        else:
+                            bounds_metric = ""
+
+                        if af.ml_on_target:
+                            target_metric = "mape" if af.ml_on_target_parameters["task"] == "regression" else "accuracy"
+                        else:
+                            target_metric = ""
+
+                        bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
 
     # ### OSCAR-P ###
@@ -1010,13 +1038,13 @@ def main():
                     ml_on_bounds=True,
                     ml_on_bounds_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                         "constraint_bounds": [[0, constr]],
                     },
                     ml_on_target=True,
                     ml_on_target_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                     },
                     bounds=bounds,
                     random_state=seed,
@@ -1047,8 +1075,8 @@ def main():
                 x_best, y_best = bo.run(n_iterations=10, n_restarts=10, verbose=True)
                 print("Best feasible x =", x_best, " y =", y_best)
 
-                bounds_metric = "mape"
-                target_metric = "mape"
+                bounds_metric = "accuracy"
+                target_metric = "accuracy"
                 bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
                 # kernel_AF combinations
@@ -1079,13 +1107,13 @@ def main():
                             ml_on_bounds=True,
                             ml_on_bounds_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                                 "constraint_bounds": [[0, constr]],
                             },
                             ml_on_target=True,
                             ml_on_target_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                             },
                             bounds=bounds,
                             random_state=seed,
@@ -1116,8 +1144,8 @@ def main():
                         x_best, y_best = bo.run(n_iterations=10, n_restarts=10, verbose=True)
                         print("Best feasible x =", x_best, " y =", y_best)
 
-                        bounds_metric = "mape"
-                        target_metric = "mape"
+                        bounds_metric = "accuracy"
+                        target_metric = "accuracy"
                         bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
 
@@ -1166,13 +1194,13 @@ def main():
                     ml_on_bounds=True,
                     ml_on_bounds_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                         "constraint_bounds": [[0, constr]],
                     },
                     ml_on_target=True,
                     ml_on_target_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                     },
                     bounds=bounds,
                     random_state=seed,
@@ -1203,8 +1231,8 @@ def main():
                 x_best, y_best = bo.run(n_iterations=30, n_restarts=10, verbose=True)
                 print("Best feasible x =", x_best, " y =", y_best)
 
-                bounds_metric = "mape"
-                target_metric = "mape"
+                bounds_metric = "accuracy"
+                target_metric = "accuracy"
                 bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
                 # kernel_AF combinations
@@ -1235,13 +1263,13 @@ def main():
                             ml_on_bounds=True,
                             ml_on_bounds_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                                 "constraint_bounds": [[0, constr]],
                             },
                             ml_on_target=True,
                             ml_on_target_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                             },
                             bounds=bounds,
                             random_state=seed,
@@ -1272,8 +1300,8 @@ def main():
                         x_best, y_best = bo.run(n_iterations=30, n_restarts=10, verbose=True)
                         print("Best feasible x =", x_best, " y =", y_best)
 
-                        bounds_metric = "mape"
-                        target_metric = "mape"
+                        bounds_metric = "accuracy"
+                        target_metric = "accuracy"
                         bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
 
@@ -1311,57 +1339,58 @@ def main():
                 folder = Path(path)
                 folder.mkdir(parents=True, exist_ok=True)
 
-                gp_builder = GP(kernel_name="Matern", 
-                    random_state=seed, 
-                    length_scale=1.0,
-                    nu=2.5)
+                if not os.path.exists(f"{path}/{seed}.csv"):
+                    gp_builder = GP(kernel_name="Matern", 
+                        random_state=seed, 
+                        length_scale=1.0,
+                        nu=2.5)
 
-                af = AF(
-                    kind="ei",
-                    kappa=1.0,
-                    ml_on_bounds=True,
-                    ml_on_bounds_parameters={
-                        "name": "ridge",
-                        "task": "regression",
-                        "constraint_bounds": [[0, constr]],
-                    },
-                    ml_on_target=True,
-                    ml_on_target_parameters={
-                        "name": "ridge",
-                        "task": "regression",
-                    },
-                    bounds=bounds,
-                    random_state=seed,
-                )
+                    af = AF(
+                        kind="ei",
+                        kappa=1.0,
+                        ml_on_bounds=True,
+                        ml_on_bounds_parameters={
+                            "name": "ridge",
+                            "task": "classification",
+                            "constraint_bounds": [[0, constr]],
+                        },
+                        ml_on_target=True,
+                        ml_on_target_parameters={
+                            "name": "ridge",
+                            "task": "classification",
+                        },
+                        bounds=bounds,
+                        random_state=seed,
+                    )
 
-                logger = Logger(dim=ds.dim)
+                    logger = Logger(dim=ds.dim)
 
-                def dummy_objective(X):
-                    raise RuntimeError("Objective should not be called in dataset mode.")
+                    def dummy_objective(X):
+                        raise RuntimeError("Objective should not be called in dataset mode.")
 
-                bo = BO(
-                    objective_function=dummy_objective,
-                    domain_bounds=bounds,
-                    gp_builder=gp_builder,
-                    af=af,
-                    constraint_functions=[],
-                    initial_points=3,
-                    init_strategy="lhs",
-                    random_state=seed,
-                    logger=logger,
-                    dataset=ds,
-                    epsilon_greedy=0.1,
-                    reparameterization=True
-                )
+                    bo = BO(
+                        objective_function=dummy_objective,
+                        domain_bounds=bounds,
+                        gp_builder=gp_builder,
+                        af=af,
+                        constraint_functions=[],
+                        initial_points=3,
+                        init_strategy="lhs",
+                        random_state=seed,
+                        logger=logger,
+                        dataset=ds,
+                        epsilon_greedy=0.1,
+                        reparameterization=True
+                    )
 
-                bo.initialize()
+                    bo.initialize()
 
-                x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
-                print("Best feasible x =", x_best, " y =", y_best)
+                    x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
+                    print("Best feasible x =", x_best, " y =", y_best)
 
-                bounds_metric = "mape"
-                target_metric = "mape"
-                bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+                    bounds_metric = "accuracy"
+                    target_metric = "accuracy"
+                    bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
                 # kernel_AF combinations
                 for kernel in ["Matern", "RBF"]:
@@ -1375,62 +1404,63 @@ def main():
                             os.system(f"cp -r output/stereomatch/reference/{constr}/{seed}.csv output/stereomatch/{kernel}_{af_kind}/{constr}/{seed}.csv")
                             continue
 
-                        if kernel == "Matern":
-                            gp_builder = GP(kernel_name=kernel, 
-                                random_state=seed, 
-                                length_scale=1.0,
-                                nu=2.5)
-                        else:
-                            gp_builder = GP(kernel_name=kernel, 
-                                random_state=seed, 
-                                length_scale=1.0)
+                        if not os.path.exists(f"{path}/{seed}.csv"):
+                            if kernel == "Matern":
+                                gp_builder = GP(kernel_name=kernel, 
+                                    random_state=seed, 
+                                    length_scale=1.0,
+                                    nu=2.5)
+                            else:
+                                gp_builder = GP(kernel_name=kernel, 
+                                    random_state=seed, 
+                                    length_scale=1.0)
 
-                        af = AF(
-                            kind=af_kind,
-                            kappa=1.0,
-                            ml_on_bounds=True,
-                            ml_on_bounds_parameters={
-                                "name": "ridge",
-                                "task": "regression",
-                                "constraint_bounds": [[0, constr]],
-                            },
-                            ml_on_target=True,
-                            ml_on_target_parameters={
-                                "name": "ridge",
-                                "task": "regression",
-                            },
-                            bounds=bounds,
-                            random_state=seed,
-                        )
+                            af = AF(
+                                kind=af_kind,
+                                kappa=1.0,
+                                ml_on_bounds=True,
+                                ml_on_bounds_parameters={
+                                    "name": "ridge",
+                                    "task": "classification",
+                                    "constraint_bounds": [[0, constr]],
+                                },
+                                ml_on_target=True,
+                                ml_on_target_parameters={
+                                    "name": "ridge",
+                                    "task": "classification",
+                                },
+                                bounds=bounds,
+                                random_state=seed,
+                            )
 
-                        logger = Logger(dim=ds.dim)
+                            logger = Logger(dim=ds.dim)
 
-                        def dummy_objective(X):
-                            raise RuntimeError("Objective should not be called in dataset mode.")
+                            def dummy_objective(X):
+                                raise RuntimeError("Objective should not be called in dataset mode.")
 
-                        bo = BO(
-                            objective_function=dummy_objective,
-                            domain_bounds=bounds,
-                            gp_builder=gp_builder,
-                            af=af,
-                            constraint_functions=[],
-                            initial_points=3,
-                            init_strategy="lhs",
-                            random_state=seed,
-                            logger=logger,
-                            dataset=ds,
-                            epsilon_greedy=0.1,
-                            reparameterization=True
-                        )
+                            bo = BO(
+                                objective_function=dummy_objective,
+                                domain_bounds=bounds,
+                                gp_builder=gp_builder,
+                                af=af,
+                                constraint_functions=[],
+                                initial_points=3,
+                                init_strategy="lhs",
+                                random_state=seed,
+                                logger=logger,
+                                dataset=ds,
+                                epsilon_greedy=0.1,
+                                reparameterization=True
+                            )
 
-                        bo.initialize()
+                            bo.initialize()
 
-                        x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
-                        print("Best feasible x =", x_best, " y =", y_best)
+                            x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
+                            print("Best feasible x =", x_best, " y =", y_best)
 
-                        bounds_metric = "mape"
-                        target_metric = "mape"
-                        bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
+                            bounds_metric = "accuracy"
+                            target_metric = "accuracy"
+                            bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
 
     ### LiGen ###
@@ -1487,13 +1517,13 @@ def main():
                     ml_on_bounds=True,
                     ml_on_bounds_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                         "constraint_bounds": [[0, constr]],
                     },
                     ml_on_target=True,
                     ml_on_target_parameters={
                         "name": "ridge",
-                        "task": "regression",
+                        "task": "classification",
                     },
                     bounds=bounds,
                     random_state=seed,
@@ -1524,8 +1554,8 @@ def main():
                 x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
                 print("Best feasible x =", x_best, " y =", y_best)
 
-                bounds_metric = "mape"
-                target_metric = "mape"
+                bounds_metric = "accuracy"
+                target_metric = "accuracy"
                 bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
                 # kernel_AF combinations
@@ -1556,13 +1586,13 @@ def main():
                             ml_on_bounds=True,
                             ml_on_bounds_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                                 "constraint_bounds": [[0, constr]],
                             },
                             ml_on_target=True,
                             ml_on_target_parameters={
                                 "name": "ridge",
-                                "task": "regression",
+                                "task": "classification",
                             },
                             bounds=bounds,
                             random_state=seed,
@@ -1593,8 +1623,8 @@ def main():
                         x_best, y_best = bo.run(n_iterations=60, n_restarts=10, verbose=True)
                         print("Best feasible x =", x_best, " y =", y_best)
 
-                        bounds_metric = "mape"
-                        target_metric = "mape"
+                        bounds_metric = "accuracy"
+                        target_metric = "accuracy"
                         bo.logger.to_csv(f"{path}/{seed}.csv", bounds_metric, target_metric)
 
 

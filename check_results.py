@@ -384,7 +384,7 @@ def main():
         plot_results(path, folders, opt_value)
 
     # query52
-    # constr_values = [262887, 334000, 407000, 645000, 2250000]
+    # constr_values = [262887, 334000, 407000, 645000, 2250000.0]
     # opt_values = [682215, 682215, 682215, 682215, 682215]
 
     # for id in range(len(constr_values)):
