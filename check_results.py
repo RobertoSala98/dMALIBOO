@@ -328,14 +328,14 @@ def plot_results(main_folder, folders, optimal_value):
 
 def main():
 
-    # best_values = {
-    #     4: 483.53250582561077,
-    #     8: 784.7950797097578,
-    #     12: 1716.9996061042643,
-    #     16: 2282.6068412213044
-    # }
+    best_values = {
+        4: 483.53250582561077,
+        8: 784.7950797097578,
+        12: 1716.9996061042643,
+        16: 2282.6068412213044
+    }
 
-    # d = 8
+    d = 8
 
     # main_folder = "output/schwefel/initialization_strategy"
     # folders = {
@@ -363,27 +363,40 @@ def main():
     # }
     # plot_results(main_folder, folders, best_values[d])
 
-    # oscarp
-    constr_values = [150, 300, 450, 600]
-    opt_values = [0.174361111, 0.174361111, 0.174361111, 0.174361111]
+    main_folder = "output/schwefel/epsilon_greedy"
+    folders = {}
+    for epsilon in [0.1, 0.01, 0.2, 0.05, 0.025]:
+        folders[f"epsilon={epsilon}"] = os.path.join(main_folder, f"{epsilon}")
+    plot_results(main_folder, folders, best_values[d])
 
-    for id in range(len(constr_values)):
-        constr_value = constr_values[id]
-        opt_value = opt_values[id]
-        path = f"output/oscarp/results/{constr_value}"
-        folder = Path(path)
-        folder.mkdir(parents=True, exist_ok=True)
+    main_folder = "output/schwefel/ML_model"
+    folders = {}
+    for constr_ML in ['ridge', 'nn', 'rf', 'xgb']:
+        for target_ML in ['ridge', 'nn', 'rf', 'xgb']:
+            folders[f"Constr.: {constr_ML}, Target: {target_ML}"] = os.path.join(main_folder, f"{constr_ML}_{target_ML}")
+    plot_results(main_folder, folders, best_values[d])
 
-        folders = {
-            "Matern + EI": f"output/oscarp/Matern_ei/{constr_value}",
-            "Matern + LCB": f"output/oscarp/Matern_lcb/{constr_value}",
-            "RBF + EI": f"output/oscarp/RBF_ei/{constr_value}",
-            "RBF + LCB": f"output/oscarp/RBF_lcb/{constr_value}",
-        }
+    # # oscarp
+    # constr_values = [150, 300, 450, 600]
+    # opt_values = [0.174361111, 0.174361111, 0.174361111, 0.174361111]
 
-        plot_results(path, folders, opt_value)
+    # for id in range(len(constr_values)):
+    #     constr_value = constr_values[id]
+    #     opt_value = opt_values[id]
+    #     path = f"output/oscarp/results/{constr_value}"
+    #     folder = Path(path)
+    #     folder.mkdir(parents=True, exist_ok=True)
 
-    # query52
+    #     folders = {
+    #         "Matern + EI": f"output/oscarp/Matern_ei/{constr_value}",
+    #         "Matern + LCB": f"output/oscarp/Matern_lcb/{constr_value}",
+    #         "RBF + EI": f"output/oscarp/RBF_ei/{constr_value}",
+    #         "RBF + LCB": f"output/oscarp/RBF_lcb/{constr_value}",
+    #     }
+
+    #     plot_results(path, folders, opt_value)
+
+    # # query52
     # constr_values = [262887, 334000, 407000, 645000, 2250000.0]
     # opt_values = [682215, 682215, 682215, 682215, 682215]
 

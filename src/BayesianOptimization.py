@@ -13,6 +13,8 @@ from AcquisitionFunction import *
 from Logger import Logger
 from Dataset import Dataset
 
+from math import prod
+
 class BO:
     def __init__(self, objective_function, domain_bounds, gp_builder, af, constraint_functions=None, initial_points=10,
                  random_state=16, logger=None, dataset=None, discrete_values=None, discrete_refine=True,
@@ -218,10 +220,7 @@ class BO:
         if len(self.discrete_dims) != self.dim:
             return None
 
-        return int(np.prod([
-            self.discrete_values[j].size
-            for j in self.discrete_dims
-        ]))
+        return int(prod([self.discrete_values[j].size for j in self.discrete_dims]))
 
     def _initial_points_non_dataset(self, n, existing_X=None):
         """

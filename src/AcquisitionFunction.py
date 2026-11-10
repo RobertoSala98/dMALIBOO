@@ -38,6 +38,10 @@ class AF:
             else:
                 raise ValueError("You must provide ml_on_bounds_parameters")
 
+        else:
+            if "ml_on_bounds_parameters" in self.af_kwards:
+                self.ml_on_bounds_parameters = self.af_kwards["ml_on_bounds_parameters"]
+
         if self.ml_on_target:
             if "ml_on_target_parameters" in self.af_kwards:
                 self.ml_on_target_parameters = self.af_kwards["ml_on_target_parameters"]

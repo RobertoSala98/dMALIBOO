@@ -8,3 +8,6 @@ output*
 venv
 *.pdf
 *.txt
+inputs_boPR
+opentuner
+MALIBOO_TCC
